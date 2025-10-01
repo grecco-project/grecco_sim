@@ -74,7 +74,7 @@ class DummyInputDataLoader(InputDataLoader):
         return pv_ts
 
     def _get_ev(self):
-        ts_cp = np.array([np.NaN] * len(self.time_index), dtype=object)
+        ts_cp = np.array([np.nan] * len(self.time_index), dtype=object)
         ts_cp[::20] = {"parking_time_h": 3, "capacity": 40.0, "init_soc": 0.7, "target_soc": 0.8}
         return ts_cp
 

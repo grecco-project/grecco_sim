@@ -92,7 +92,7 @@ class EVCharger(model_base.Model):
         self.params_charger = params
 
         self.soc = np.zeros(self.horizon + 1)
-        self.soc.fill(np.NaN)
+        self.soc.fill(np.nan)
         self.p_ac_set = np.zeros(self.horizon)
         self.p_ac = np.zeros(self.horizon)
         self.p_net = np.zeros(self.horizon)
@@ -162,8 +162,8 @@ class EVCharger(model_base.Model):
                 self.active_cp = None
                 self.idx_current_cp += 1
         else:
-            p_ac, p_net = 0.0, np.NaN
-            soc = np.NaN
+            p_ac, p_net = 0.0, np.nan
+            soc = np.nan
             # soc = 0
 
             if (

@@ -183,12 +183,12 @@ class LocalSolverGradientDescentEV(solver_commons.SolverWrapper):
         sys_id: str,
         sys_parameters: dict[str, type_defs.SysPars],
         controller_pars: type_defs.OptParameters,
-        create_problem: Callable,
+        add_augmentation: Callable,
         add_par_value: Callable,
     ):
         super().__init__(horizon, sys_id, sys_parameters, controller_pars)
 
-        self.create_problem = create_problem
+        self.add_augmentation = add_augmentation
         self.add_par_values = add_par_value
 
         self.ev_pars, self.ev_flex_id = [
@@ -203,16 +203,31 @@ class LocalSolverGradientDescentEV(solver_commons.SolverWrapper):
             self.bat_pars = [pars for pars in sys_parameters.values() if pars.system == "bat"][0]
             # get model config with "ev" for backup solver initialization
             mc = tuple(s for s in self.model_configuration if s != "ev")
-            self.backup_solver_no_cp = self.create_problem(
+            self.backup_solver_no_cp = self._create_problem(
                 self.sys_id, self.horizon, mc, sys_parameters, controller_pars, {}
             )
         if "hp" in self.model_configuration:
             self.hp_pars = [pars for pars in sys_parameters.values() if pars.system == "hp"][0]
             # get model config with "ev" for backup solver initialization
             mc = tuple(s for s in self.model_configuration if s != "ev")
-            self.backup_solver_no_cp = self.create_problem(
+            self.backup_solver_no_cp = self._create_problem(
                 self.sys_id, self.horizon, mc, sys_parameters, controller_pars, {}
             )
+
+    def _create_problem(
+        self,
+        sys_id,
+        horizon,
+        model_configuration: tuple[str],
+        sys_pars: dict[str, type_defs.SysPars],
+        opt_pars: type_defs.OptParameters,
+        charge_processes: dict[str, ocp_ev.ChargeProcess],
+    ):
+        ocp, grid_var = phys_commons.get_plain_ocp(
+            sys_id, horizon, model_configuration, sys_pars, opt_pars, charge_processes
+        )
+        ocp = self.add_augmentation(sys_id, horizon, ocp, grid_var, self.controller_pars)
+        return mycas.MyNLPSolver(ocp, opt_pars.solver_name)
 
     def solve(
         self,
@@ -236,7 +251,7 @@ class LocalSolverGradientDescentEV(solver_commons.SolverWrapper):
                 return
         else:
             self._has_cp = True
-            self.solver = self.create_problem(
+            self.solver = self._create_problem(
                 self.sys_id,
                 self.horizon,
                 self.model_configuration,
@@ -284,7 +299,7 @@ class LocalSolverGradientDescentArbitrary(SolverWrapper):
         sys_id: str,
         sys_parameters: dict[str, type_defs.SysPars],
         controller_pars: type_defs.OptParameters,
-        _: Callable,
+        add_augmentation: Callable,
         add_par_value: Callable,
     ):
 
@@ -292,6 +307,7 @@ class LocalSolverGradientDescentArbitrary(SolverWrapper):
         self.sys_id = sys_id
         self.controller_pars = controller_pars
 
+        self.add_augmentation = add_augmentation
         self.add_par_values = add_par_value
 
         self.sys_pars = sys_parameters
@@ -305,17 +321,12 @@ class LocalSolverGradientDescentArbitrary(SolverWrapper):
         opt_pars: type_defs.OptParameters,
         charge_processes: dict[str, ocp_ev.ChargeProcess],
     ) -> mycas.MyNLPSolver:
-
+        """Create the OCP."""
         ocp, grid_var = ocp_all_flex.get_ocp(sys_id, horizon, sys_pars, opt_pars, charge_processes)
         if ocp.empty:
             return None
 
-        # Add cost term from Lagrangian augmentation.
-        ocp.parameters["lam_a"] = mycas.MyPar(f"lam_a_{sys_id}", horizon)
-        ocp.obj += mycas.dot(ocp.parameters["lam_a"].sx, grid_var.sx)
-
-        ocp.user_functions["grid_var"] = grid_var.sx
-        # ocp = solver_commons._add_gradient_descent_terms(sys_id, horizon, ocp, grid_var)
+        self.add_augmentation(sys_id, horizon, ocp, grid_var, self.controller_pars)
         return mycas.MyNLPSolver(ocp, opt_pars.solver_name)
 
     def solve(
@@ -382,17 +393,32 @@ class LocalSolverGradientDescent(solver_commons.SolverWrapper):
         sys_id: str,
         sys_parameters: dict[str, type_defs.SysPars],
         controller_pars: type_defs.OptParameters,
-        create_problem: Callable,
+        add_augmentation: Callable,
         add_par_value: Callable,
     ):
         super().__init__(horizon, sys_id, sys_parameters, controller_pars)
 
-        self.create_problem = create_problem
+        self.add_augmentation = add_augmentation
         self.add_par_values = add_par_value
 
-        self.nlp_solver = self.create_problem(
+        self.nlp_solver = self._create_problem(
             sys_id, horizon, self.model_configuration, sys_parameters, controller_pars, {}
         )
+
+    def _create_problem(
+        self,
+        sys_id,
+        horizon,
+        model_configuration: tuple[str],
+        sys_pars: dict[str, type_defs.SysPars],
+        opt_pars: type_defs.OptParameters,
+        charge_processes: dict[str, ocp_ev.ChargeProcess],
+    ):
+        ocp, grid_var = phys_commons.get_plain_ocp(
+            sys_id, horizon, model_configuration, sys_pars, opt_pars, charge_processes
+        )
+        ocp = self.add_augmentation(sys_id, horizon, ocp, grid_var, self.controller_pars)
+        return mycas.MyNLPSolver(ocp, opt_pars.solver_name)
 
     def solve(
         self,

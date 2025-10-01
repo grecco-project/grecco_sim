@@ -159,12 +159,17 @@ def get_solver(
     else:
         model_conf = solver_commons.dict_to_model_conf(sys_parameters)
 
-        solver = solver_commons.SOLVER_CLASSES[model_conf](
+        solver_class = (
+            solver_commons.SOLVER_CLASSES[model_conf]
+            if model_conf in solver_commons.SOLVER_CLASSES
+            else solver_commons.LocalSolverGradientDescentArbitrary
+        )
+        solver = solver_class(
             horizon,
             sys_id,
             sys_parameters,
             controller_pars,
-            _create_problem_admm,
+            _add_admm_terms,
             _add_admm_parameters,
         )
 

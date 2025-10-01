@@ -6,7 +6,13 @@ from grecco_sim.local_control.physical import ocp_ev
 from grecco_sim.util import type_defs
 
 
-def _add_gradient_descent_terms(sys_id: str, horizon: int, ocp: mycas.MyOCP, grid_var: mycas.MySX):
+def _add_gradient_descent_terms(
+    sys_id: str,
+    horizon: int,
+    ocp: mycas.MyOCP,
+    grid_var: mycas.MySX,
+    opt_pars: type_defs.OptParameters,
+):
 
     # Add cost term from Lagrangian augmentation.
     ocp.parameters["lam_a"] = mycas.MyPar(f"lam_a_{sys_id}", horizon)
@@ -66,7 +72,7 @@ def get_solver(
             sys_id,
             sys_parameters,
             controller_pars,
-            _create_problem_gradient_descent,
+            _add_gradient_descent_terms,
             _add_parameters_gradient_descent,
         )
 
