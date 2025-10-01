@@ -1,0 +1,48 @@
+[project]
+name = "grecco-sim"
+version = "1.0.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "casadi>=3.6.7",
+    "numpy>=1.26.4",
+    "pandas>=2.2.3",
+    "pypsa==0.28.0",
+    "pytz>=2025.1",
+]
+
+[project.optional-dependencies]
+sim = [
+    "pyqt6>=6.8.1",
+    "simbench>=1.5.3",
+]
+dev = [
+    "flake8>=7.1.2",
+    "pytest>=8.3.5",
+]
+
+[build-system]
+build-backend = 'setuptools.build_meta'
+requires = [
+    'setuptools',
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["grecco_sim*"]
+
+[tool.black]
+line-length = 100
+
+[tool.pyright]
+include = ["grecco_sim"]
+exclude = ["**/__pycache__"]
+ignore = ["data", "doc", "results", "venv"]
+
+reportArgumentType = "warning"
+reportAssignmentType = "warning"
+reportOptionalMemberAccess = "warning"
+reportAttributeAccessIssue = "warning"
+reportIncompatibleMethodOverride = "warning"
+reportReturnType = "warning"

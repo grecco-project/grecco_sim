@@ -1,0 +1,10 @@
+Maybe it makes sense to put the grecco grid file here and maybe also a small example grid for quick tests
+with just a few grid nodes and connected households.
+
+At some time, Btissam wanted to include the heat pump data base in the package data.
+This was never functional.
+Hence, the files add to the repo when trying were deleted when introducing uv as project manager.
+If the data is needed, I think the best way would be to move it into the source dir add control data adding with pyproject.toml.
+
+
+

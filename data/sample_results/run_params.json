@@ -1,0 +1,1 @@
+{'sim_horizon': 90, 'n_agents': 40, 'max_market_iterations': 20, 'inspection': None, 'output_file_dir': '/home/agross/src/python/grecco/grecco_sim/results/default', 'dt': datetime.timedelta(seconds=900)}
