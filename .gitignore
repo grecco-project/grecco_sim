@@ -9,19 +9,24 @@ venv
 .venv
 .vscode
 
+uv.lock
+
 *.egg
 results
 data/Opfingen_scenario_pv_20_ev_efh_0_ev_mfh_0_evghd_0_ev_fleet_0_hp_15_2023
 data/Opfingen_scenario_pv_20_ev_efh_0_ev_mfh_0_evghd_0_ev_fleet_0_hp_15_2023pf_all
 data/Opfingen_scenario_pv_20_ev_efh_0_ev_mfh_0_evghd_0_ev_fleet_0_hp_15_2023pf_all_ts_reduced
 data/2024
+data/2028
 data/2033
 data/2037
+data/2045
+data/full_el
 data/synpro_ev_data_pool.csv
 grecco_sim.egg-info
 data/Opfingen_Profiles_2023
 data/tmp/
 data/conf.json
 data/pickled/
-grecco_sim/scripts/debug/start_simulation.py
 data/opfingen_2045
+grecco_sim/scripts/debug/start_simulation.py
