@@ -278,7 +278,7 @@ class PyPsaGridInputLoader(InputDataLoader):
                 columns={"t": "Outside Temperature", "G": "Solar Irradiation"}, inplace=True
             )
         self.weather_data = data_io.set_tz_index_to_utc(weather_data)
-        self.weather_data.index -= datetime.timedelta(days=365)
+        # self.weather_data.index -= datetime.timedelta(days=365)
 
         # check if data on ev capacity is available
         ev_capacity_data = None
