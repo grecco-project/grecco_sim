@@ -172,6 +172,7 @@ def _plot_hps(
             ax_temp.plot(ts_ag["hp_temp"], label=ag_name, drawstyle="steps-post")
     fig_temp.legend(loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.05))
     fig_temp.tight_layout(rect=[0, 0.1, 1, 1])
+    fig.savefig(run_params.output_file_dir / "plots" / "temperature.png")
 
 
 def _plot_batteries(

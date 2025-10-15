@@ -152,7 +152,7 @@ class Household(model_base.Model):
                 unit_id, horizon, dt_h, unit_pars, sub_ts
             )
 
-        # Normal initiation
+        # Normal initialization
         self.c_sup_list = np.ones(ts_in.index.shape) * params[sys_id].c_sup
         self.c_feed_list = np.ones(ts_in.index.shape) * params[sys_id].c_feed
 

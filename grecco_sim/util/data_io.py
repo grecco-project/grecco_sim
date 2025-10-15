@@ -128,8 +128,17 @@ def get_new_charging_data(ts_in, dt_h):
 
     # Group by the block (using group and the value) and record start and end times
     availability = (
-        df_temp.groupby(["group"])
-        .apply(lambda x: pd.Series({"start_time": x.index[0], "end_time": x.index[-1]}))
+        df_temp.groupby("group", group_keys=False)
+        .apply(
+            lambda x: pd.Series(
+                {
+                    "group": x["group"].iloc[0],
+                    "start_time": x.index[0],
+                    "end_time": x.index[-1],
+                }
+            ),
+            include_groups=True,
+        )
         .reset_index(drop=True)
     )
 

@@ -278,7 +278,7 @@ class PyPsaGridInputLoader(InputDataLoader):
                 columns={"t": "Outside Temperature", "G": "Solar Irradiation"}, inplace=True
             )
         self.weather_data = data_io.set_tz_index_to_utc(weather_data)
-        self.weather_data.index -= datetime.timedelta(days=365)
+        # self.weather_data.index -= datetime.timedelta(days=365)
 
         # check if data on ev capacity is available
         ev_capacity_data = None
@@ -377,7 +377,7 @@ class PyPsaGridInputLoader(InputDataLoader):
         # TODO @Rebecca, if you want to use time varying prices. Find a way to read your input here.
         # This example generates a time varying price which increases from 0.1 to 0.3
         # over the horizon
-        # ts_data["c_sup"] = 0.2 * np.arange(len(ts_data.index)) / len(ts_data.index) + 0.1
+        # ts_data["c_sup"] = self.prices["c_sup"]
 
         return ts_data
 
@@ -401,7 +401,11 @@ class PyPsaGridInputLoader(InputDataLoader):
             # HP initialization can only include on-off heatpumps since information from synthetic
             # profiles is limited
             unit_id = next((col for col in self.grid.hp_p.columns if sys_id in col), None)
-            heat_pump_size = self.grid.heat_pumps.loc[unit_id, "p_set"]
+            heat_pump_size = (
+                self.grid.heat_pumps.loc[unit_id, "s_nom"]
+                if self.grid.heat_pumps.loc[unit_id, "p_set"] == 0
+                else self.grid.heat_pumps.loc[unit_id, "p_set"]
+            )
             if any(col in sys_id for col in self.heat_demand.columns):  # Heat demand available
                 bus_name = next((col for col in self.heat_demand.columns if col in sys_id), None)
                 heat_demand_ts = self.heat_demand[bus_name]

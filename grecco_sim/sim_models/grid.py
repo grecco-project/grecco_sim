@@ -123,8 +123,10 @@ class Grid(object):
             }
         )
         self.heat_pumps["p_set"] *= 1000.0
+        self.heat_pumps["s_nom"] *= 1000.0
 
         self.hp_p = self.network.loads_t["p_set"][self._ind_hps]
+        # if self.network.loads.loc[self._ind_hps, "p_set"] == 0 use "s_nom" instead (input data bug from synpro)
         self.hp_p = self.hp_p.rename(
             columns={
                 i: self._sys_id(
