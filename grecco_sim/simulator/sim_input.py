@@ -226,7 +226,7 @@ class PyPsaGridInputLoader(InputDataLoader):
 
     MWH_TO_KWH = 1000.0
 
-    def __init__(self, time_index: pd.DatetimeIndex, scenario: Dict, dt_h: datetime.timedelta):
+    def __init__(self, time_index, scenario: Dict, dt_h: datetime.timedelta):
 
         self.dt_h = dt_h
         self.time_index = time_index
@@ -246,8 +246,8 @@ class PyPsaGridInputLoader(InputDataLoader):
             heat_data_path = pathlib.Path(scenario["heat_demand_data_path"])
             delimiter = data_io.get_csv_delimiter(heat_data_path)
             heat_demand = pd.read_csv(heat_data_path, sep=delimiter, index_col=0)
-            heat_demand.index = pd.to_datetime(heat_demand.index, utc=True)
-            self.heat_demand = data_io.set_tz_index_to_utc(heat_demand)
+            heat_demand.index = data_io.convert_to_unix(heat_demand.index)
+            self.heat_demand = heat_demand
         else:
             heat_data_path = None
             self.heat_demand = pd.DataFrame(index=self.time_index, data={})  # empty DataFrame
@@ -269,6 +269,14 @@ class PyPsaGridInputLoader(InputDataLoader):
             weather_data.index = pd.to_datetime(weather_data.index, utc=True)
             # weather_data.index = weather_data.index.tz_convert("Europe/Berlin")
         weather_data = weather_data.resample("15min").interpolate()
+        """weather_data = weather_data.reindex(
+            pd.date_range(
+                weather_data.index[0],
+                weather_data.index[-1] + 3 * pd.Timedelta("15min"),
+                freq="15min",
+            )
+        ).ffill()"""
+        weather_data.index = data_io.convert_to_unix(weather_data.index)
 
         # In case the weather data has ERA5 format
         if all(
@@ -277,7 +285,7 @@ class PyPsaGridInputLoader(InputDataLoader):
             weather_data.rename(
                 columns={"t": "Outside Temperature", "G": "Solar Irradiation"}, inplace=True
             )
-        self.weather_data = data_io.set_tz_index_to_utc(weather_data)
+        # self.weather_data = data_io.set_tz_index_to_utc(weather_data)
         # self.weather_data.index -= datetime.timedelta(days=365)
 
         # check if data on ev capacity is available

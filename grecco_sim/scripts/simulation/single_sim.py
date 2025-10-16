@@ -1,30 +1,31 @@
 import pathlib
 import datetime
-import pytz
+import zoneinfo as zi
 import matplotlib.pyplot as plt
 
 from grecco_sim.simulator import simulation_setup
 from grecco_sim.util import type_defs, logger
 
+YEAR = 2028
 OPFINGEN = {
-    "name": "opfingen_2033_c",
+    "name": f"opfingen_{YEAR}_c",
     "n_agents": 4,
     # Create symlink into data directory!
     "grid_data_path": pathlib.Path(__file__).parent.parent.parent.parent
     / "data"
-    / "2033"
-    / "2033_evconservative",
+    / f"{YEAR}"
+    / f"{YEAR}_evconservative",
     "weather_data_path": pathlib.Path(__file__).parent.parent.parent.parent
     / "data"
-    / "2033"
+    / f"{YEAR}"
     / "weather_data.csv",
     "ev_capacity_data_path": pathlib.Path(__file__).parent.parent.parent.parent
     / "data"
     / "synpro_ev_data_pool.csv",  # if file not available, capacities are set to 60kWh
-    "heat_demand_path": pathlib.Path(__file__).parent.parent.parent.parent
+    "heat_demand_data_path": pathlib.Path(__file__).parent.parent.parent.parent
     / "data"
-    / "2033"
-    / "2033_evconservative"
+    / f"{YEAR}"
+    / f"{YEAR}_evconservative"
     / "heat_demand.csv",
     "hp": True,
     "ev": True,
@@ -39,7 +40,6 @@ def main(coord_type: str, start_time: datetime.datetime, days: int = 7, name: st
         name = f"{coord_type}_{date}"
     run_parameters = simulation_setup.RunParameters(
         sim_horizon=days * 24 * 4,
-        # start_time=datetime.datetime(2024, 1, 1, 0, 0, 0, tzinfo=pytz.utc),
         start_time=start_time,
         max_market_iterations=4,
         coordination_mechanism=coord_type,
@@ -74,7 +74,7 @@ def main(coord_type: str, start_time: datetime.datetime, days: int = 7, name: st
 if __name__ == "__main__":
 
     coord = "none"  # "none", "plain_grid_fee", "local_self_suff", "central_optimization", "second_order", "admm"
-    start = datetime.datetime(2020, 1, 1, 0, 0, 0, tzinfo=pytz.utc)
+    start = datetime.datetime(2019, 1, 1, 0, 0, 0, tzinfo=zi.ZoneInfo("Europe/Berlin"))
     days = 10
 
-    main(coord, start, days, name="none_2033_hp_test")
+    main(coord, start, days, name=f"{coord}_{YEAR}_hp_test")
