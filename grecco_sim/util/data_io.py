@@ -1,17 +1,19 @@
-import pickle
-from typing import Any, Dict
-import pickle
-from typing import Any, Dict
 from pathlib import Path
-import pytz
+import pickle
 import json
-import math
 
+import pytz
+import datetime
+
+from typing import Any, Dict, Optional
+
+import math
 import numpy as np
 import pandas as pd
+import pypsa
 
 from grecco_sim.util import config, type_defs
-from grecco_sim.util import config, type_defs
+from grecco_sim.sim_models import grid
 
 
 UNIX_TIME = "unixtimestamp"
@@ -162,13 +164,13 @@ def get_new_charging_data(ts_in, dt_h):
 
 def pickle_something(filename: str, something: Any):
     """Write something as pickle to disc for inspection."""
-    with open(config.data_path() / "pickled" / filename, "wb") as out_file:
+    with open(config.data_root() / "pickled" / filename, "wb") as out_file:
         pickle.dump(something, out_file)
 
 
 def unpickle(filename: str) -> Any:
     """Load pickled object."""
-    with open(config.data_path() / "pickled" / filename, "rb") as out_file:
+    with open(config.data_root() / "pickled" / filename, "rb") as out_file:
         return pickle.load(out_file)
 
 
@@ -260,3 +262,39 @@ def get_csv_delimiter(file_path):
             return " "
         else:
             raise ValueError("Unknown delimiter in file: " + file_path)
+
+
+def load_pickled_grid(
+        pickle_name: str,
+        dt_h: datetime.timedelta,
+        network_dir: Path,
+        ev_capacity_data: Optional[Path]) -> pypsa.Network:
+
+    """ Pickling avoids repetition of costly Grid object creation.
+
+    pickle_name: The identifier of the pickle file.
+    dt_h: step size is used for the creation of Grid object.
+    network_dir: Network data location.
+    ev_capacity_data: ToDo: Insert short data description. """
+
+    p = config.data_root() / "tmp" / f"pickled_grid_{pickle_name}.pkl"
+
+    if p.exists():
+        print(f"Loading pickled grid.\nFor reload, use 'rm {p}'. [LINUX]")
+
+        with open(p, "rb") as f:
+            n = pickle.load(f)
+
+    else:
+        print(f"Building pypsa.Network from {network_dir}.")
+        print(f"Caching pypsa.Network at {p}")
+
+        if not p.parent.exists():
+            p.parent.mkdir()
+
+        n = grid.Grid(network_dir, dt_h, ev_capacity_data)
+
+        with open(p, "wb") as f:
+            pickle.dump(n, f)
+
+    return n

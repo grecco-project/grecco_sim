@@ -1,11 +1,11 @@
 from typing import Optional
 import pathlib
 import datetime
-import zoneinfo as zi
+import zoneinfo
 import matplotlib.pyplot as plt
 
 from grecco_sim.simulator import simulation_setup
-from grecco_sim.util import type_defs, logger
+from grecco_sim.util import config, type_defs, logger
 
 
 def build_opfingen_scenario(data_root: pathlib.Path, year_int) -> dict:
@@ -74,14 +74,20 @@ if __name__ == "__main__":
     #   I think we should define the variable year via "start.year"
     #   If that is not possible, leave a comment on why.
 
-    data_root = pathlib.Path(__file__).parents[3] / "data"
+    data_root = config.data_root()
     year = 2033
 
     # --- Configuration ---
     coordinators = ["none", "plain_grid_fee", "local_self_suff", "central"]
     coordinator_name = coordinators[0]
     n_days = 10
-    start = datetime.datetime(2019, 1, 1, 0, 0, 0, tzinfo=zi.ZoneInfo("Europe/Berlin"))
+
+    start = datetime.datetime(
+        year=2019,
+        month=1,
+        day=1,
+        hour=0,
+        tzinfo=zoneinfo.ZoneInfo("Europe/Berlin"))
 
     scenario = build_opfingen_scenario(data_root, year)
 

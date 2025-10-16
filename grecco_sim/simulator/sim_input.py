@@ -1,15 +1,13 @@
 """This module provides classes to load simulation data."""
 
 import abc
-import os
-import pathlib
+from pathlib import Path
 import pickle
 from typing import List, Dict
 import datetime
 import pandas as pd
 import numpy as np
 
-from grecco_sim.sim_models import grid
 from grecco_sim.util import config, type_defs, data_io
 
 
@@ -118,12 +116,16 @@ class SampleInputDataLoader(InputDataLoader):
         self.time_index = time_index
 
         if "data_path" in scenario:
-            self.data_path = pathlib.Path(scenario["data_path"])
+            self.data_path = Path(scenario["data_path"])
         else:
             # get the path of current file
-            path = pathlib.Path(__file__).parent.absolute()
+            path = Path(__file__).parent.absolute()
             # go two levels up
             self.data_path = path.parent.parent / "data" / "sample_scenario"
+
+        if not self.data_path.exists():
+            msg = f"Given path for scenario input {self.data_path} not found."
+            raise ValueError(msg)
 
         self.scenario = scenario
         self.sys_ids = []
@@ -131,8 +133,7 @@ class SampleInputDataLoader(InputDataLoader):
         self._load_data()
 
     def _load_data(self):
-        if not os.path.exists(self.data_path):
-            raise ValueError(f"Given data path for scenario input {self.data_path} is non-existant")
+
 
         self._data = {}
 
@@ -234,16 +235,16 @@ class PyPsaGridInputLoader(InputDataLoader):
         # TODO: Discuss: Would be handy to have a GrECCo config class that
         #   handles data verification and default values?
         if "grid_data_path" and "weather_data_path" in scenario:
-            network_data_path = pathlib.Path(scenario["grid_data_path"])
-            weather_data_path = pathlib.Path(scenario["weather_data_path"])
+            network_data_path = Path(scenario["grid_data_path"])
+            weather_data_path = Path(scenario["weather_data_path"])
         else:
-            current_file = pathlib.Path(__file__).parents[0].absolute()
+            current_file = Path(__file__).parents[0].absolute()
             data_root = current_file.parents[1] / "data" / "opfingen"
             network_data_path = data_root / "grid"
             weather_data_path = data_root / "weather_data.csv"
 
         if "heat_demand_data_path" in scenario:
-            heat_data_path = pathlib.Path(scenario["heat_demand_data_path"])
+            heat_data_path = Path(scenario["heat_demand_data_path"])
             delimiter = data_io.get_csv_delimiter(heat_data_path)
             heat_demand = pd.read_csv(heat_data_path, sep=delimiter, index_col=0)
             heat_demand.index = data_io.convert_to_unix(heat_demand.index)
@@ -305,17 +306,11 @@ class PyPsaGridInputLoader(InputDataLoader):
         # if two of the three are true, set multi_bool to True
         self.multi_flex_bool = sum([self._model_hps, self._model_bats, self._model_evs]) > 1
 
-        pickled_grid_path = config.data_path() / "tmp" / f"pickled_grid_{scenario['name']}.pkl"
-        if os.path.exists(pickled_grid_path):
-            print("Loading pickled grid (Delete pickle file if reload is necessary).")
-            print(f"'rm {pickled_grid_path}'")
-            with open(pickled_grid_path, "rb") as grid_tmp:
-                self.grid = pickle.load(grid_tmp)
-        else:
-            self.grid = grid.Grid(network_data_path, self.dt_h, ev_capacity_data)
-            print(f"Caching Grid object to {pickled_grid_path}")
-            with open(pickled_grid_path, "wb") as grid_tmp:
-                pickle.dump(self.grid, grid_tmp)
+        self.grid = data_io.load_pickled_grid(
+            pickle_name=scenario["name"],
+            dt_h=self.dt_h,
+            network_dir=network_data_path,
+            ev_capacity_data=ev_capacity_data)
 
     def get_sys_ids(self):
         return self.grid.sys_ids

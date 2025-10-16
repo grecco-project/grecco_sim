@@ -1,20 +1,20 @@
 import json
-import pathlib
+from pathlib import Path
 
 
-def result_dir() -> pathlib.Path:
+def result_dir() -> Path:
     """Get results dir: result in main directory"""
-    return pathlib.Path(__file__).parent.parent.parent / "results"
+    return Path(__file__).parents[2] / "results"
 
 
-def data_path():
-    """Get path of data in main dir."""
-    return pathlib.Path(__file__).parent.parent.parent / "data"
+def data_root() -> Path:
+    """ Assume data is stored in repository root. """
+    return Path(__file__).parents[2] / "data"
 
 
 def get_config() -> dict:
     """Get user config if existing."""
-    conf_path = data_path() / "conf.json"
+    conf_path = data_root() / "conf.json"
     if not conf_path.exists():
         # No config present
         return {}
