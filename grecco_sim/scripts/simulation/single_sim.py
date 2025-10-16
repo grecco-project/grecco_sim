@@ -2,7 +2,7 @@ from typing import Optional
 
 import pathlib
 import datetime
-import pytz
+import zoneinfo as zi
 import matplotlib.pyplot as plt
 
 from grecco_sim.simulator import simulation_setup
@@ -76,7 +76,8 @@ def main(
 if __name__ == "__main__":
 
     coord = "none"  # "none", "plain_grid_fee", "local_self_suff", "central_optimization", "second_order", "admm"
-    start = datetime.datetime(2020, 1, 1, 0, 0, 0, tzinfo=pytz.utc)
+    start = datetime.datetime(2019, 1, 1, 0, 0, 0, tzinfo=zi.ZoneInfo("Europe/Berlin"))
     days = 10
 
     main(coord, start, days, sim_name="none_2033_hp_test")
+    main(coord, start, days, name=f"{coord}_{year}_hp_test")

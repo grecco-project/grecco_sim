@@ -217,12 +217,33 @@ def set_tz_index_to_utc(df: pd.DataFrame) -> pd.DataFrame:
     if tz_index.tz is None:
         tz_index = tz_index.tz_localize("utc")
     else:
-        pass
-        # tz_index = tz_index.tz_convert("Europe/Berlin")
+        tz_index = tz_index.tz_convert("Europe/Berlin")
 
     localized_df.index = tz_index
 
     return localized_df
+
+
+def convert_to_unix(idx: pd.Index, assume_tz="UTC"):
+    # Build naive/aware DatetimeIndex
+
+    if type(idx) is not pd.DatetimeIndex:
+        idx = pd.to_datetime(idx, utc=True)
+
+    if idx.tz is None:
+        # Interpret naive times as being in `assume_tz`
+        # If you use a DST zone like Europe/Berlin, handle DST edge cases:
+        idx = idx.tz_localize(
+            assume_tz,
+            ambiguous="infer",  # fall-back hour (e.g., Oct) -> infer
+            nonexistent="shift_forward",  # spring-forward gap -> shift to next valid time
+        )
+    else:
+        # Already tz-aware: good
+        pass
+
+    # Unix seconds (int64). For ms, divide by 1_000_000 instead.
+    return pd.Index(idx.view("int64") // 1_000_000_000, name="unixtime", dtype="int64")
 
 
 def get_csv_delimiter(file_path):
