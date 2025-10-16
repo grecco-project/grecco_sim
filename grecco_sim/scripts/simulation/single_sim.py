@@ -1,5 +1,4 @@
 from typing import Optional
-
 import pathlib
 import datetime
 import zoneinfo as zi
@@ -8,32 +7,31 @@ import matplotlib.pyplot as plt
 from grecco_sim.simulator import simulation_setup
 from grecco_sim.util import type_defs, logger
 
-year = 2033
-data_root = pathlib.Path(__file__).parents[3] / "data"
 
-OPFINGEN = {
-    "name": "opfingen_2033_c",
-    "n_agents": 4,
-    # Create symlink into data directory!
-    "grid_data_path": data_root / f"{year}" / "2033_evconservative",
-    "weather_data_path": data_root / f"{year}" / "weather_data.csv",
-    "ev_capacity_data_path": data_root / f"{year}" /
-                             "synpro_ev_data_pool.csv",
-    # if file not available, capacities are set to 60kWh
-    "heat_demand_data_path": data_root / f"{year}" / "2033_evconservative" /
-                        "heat_demand.csv",
-    "hp": True,
-    "ev": True,
-    "bat": True,
-}
+def build_opfingen_scenario(data_root: pathlib.Path, year_int) -> dict:
+    """Create the OPFINGEN scenario dictionary."""
+
+    return {
+        "name": "opfingen_2033_c",
+        "n_agents": 4,
+        "grid_data_path": data_root / f"{year}" / "2033_evconservative",
+        "weather_data_path": data_root / f"{year}" / "weather_data.csv",
+        "ev_capacity_data_path": data_root / f"{year}" / "synpro_ev_data_pool.csv",
+        "heat_demand_data_path": data_root / f"{year}" / "2033_evconservative" / "heat_demand.csv",
+        "hp": True,
+        "ev": True,
+        "bat": True,
+    }
 
 
-def main(
+def run_simulation(
         coord_type: str,
         start_time: datetime.datetime,
-        days: int = 7,
+        days: int,
+        scenario: dict,
         sim_name: Optional[str] = None):
 
+    """Set up and run the simulation."""
     date = start_time.date()
 
     if sim_name is None:
@@ -41,14 +39,11 @@ def main(
 
     run_parameters = simulation_setup.RunParameters(
         sim_horizon=days * 24 * 4,
-        # start_time=datetime.datetime(2024, 1, 1, 0, 0, 0, tzinfo=pytz.utc),
         start_time=start_time,
         max_market_iterations=4,
         coordination_mechanism=coord_type,
-        # scenario=SAMPLE_SCENARIO,
-        scenario=OPFINGEN,
-        sim_tag=f"{coord_type}",
-        # inspection=[36],
+        scenario=scenario,
+        sim_tag=coord_type,
         use_prev_signals=False,
         plot=True,
         show=False,
@@ -66,7 +61,7 @@ def main(
     )
 
     grid_pars = type_defs.GridDescription(
-        p_lim=150.0,  # Algorithm parameters
+        p_lim=150.0,
     )
 
     simulator = simulation_setup.SimulationSetup(run_parameters)
@@ -75,8 +70,22 @@ def main(
 
 if __name__ == "__main__":
 
-    coord = "none"  # "none", "plain_grid_fee", "local_self_suff", "central_optimization", "second_order", "admm"
-    start = datetime.datetime(2019, 1, 1, 0, 0, 0, tzinfo=zi.ZoneInfo("Europe/Berlin"))
-    days = 10
+    # todo: It is confusing to have a year in "start" and "year" as variable.
+    #   I think we should define the variable year via "start.year"
+    #   If that is not possible, leave a comment on why.
 
-    main(coord, start, days, sim_name=f"{coord}_{year}_hp_test")
+    data_root = pathlib.Path(__file__).parents[3] / "data"
+    year = 2033
+
+    # --- Configuration ---
+    coordinators = ["none", "plain_grid_fee", "local_self_suff", "central"]
+    coordinator_name = coordinators[0]
+    n_days = 10
+    start = datetime.datetime(2019, 1, 1, 0, 0, 0, tzinfo=zi.ZoneInfo("Europe/Berlin"))
+
+    scenario = build_opfingen_scenario(data_root, year)
+
+    sim_name = f"{coordinator_name}_{year}_hp_test"
+
+    # --- Run Simulation ---
+    run_simulation(coordinator_name, start, n_days, scenario, sim_name)
