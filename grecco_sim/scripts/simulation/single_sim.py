@@ -9,7 +9,7 @@ from grecco_sim.simulator import simulation_setup
 from grecco_sim.util import type_defs, logger
 
 year = 2033
-data_root = pathlib.Path(__file__).parent(4) / "data"
+data_root = pathlib.Path(__file__).parents[3] / "data"
 
 OPFINGEN = {
     "name": "opfingen_2033_c",
@@ -20,7 +20,7 @@ OPFINGEN = {
     "ev_capacity_data_path": data_root / f"{year}" /
                              "synpro_ev_data_pool.csv",
     # if file not available, capacities are set to 60kWh
-    "heat_demand_path": data_root / f"{year}" / "2033_evconservative" /
+    "heat_demand_data_path": data_root / f"{year}" / "2033_evconservative" /
                         "heat_demand.csv",
     "hp": True,
     "ev": True,
@@ -79,5 +79,4 @@ if __name__ == "__main__":
     start = datetime.datetime(2019, 1, 1, 0, 0, 0, tzinfo=zi.ZoneInfo("Europe/Berlin"))
     days = 10
 
-    main(coord, start, days, sim_name="none_2033_hp_test")
-    main(coord, start, days, name=f"{coord}_{year}_hp_test")
+    main(coord, start, days, sim_name=f"{coord}_{year}_hp_test")
