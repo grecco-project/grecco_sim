@@ -134,7 +134,6 @@ class SampleInputDataLoader(InputDataLoader):
 
     def _load_data(self):
 
-
         self._data = {}
 
         for comp in ["load", "pv"]:
@@ -247,7 +246,6 @@ class PyPsaGridInputLoader(InputDataLoader):
             heat_data_path = Path(scenario["heat_demand_data_path"])
             delimiter = data_io.get_csv_delimiter(heat_data_path)
             heat_demand = pd.read_csv(heat_data_path, sep=delimiter, index_col=0)
-            heat_demand.index = data_io.convert_to_unix(heat_demand.index)
             self.heat_demand = heat_demand
         else:
             heat_data_path = None
@@ -265,19 +263,16 @@ class PyPsaGridInputLoader(InputDataLoader):
             weather_data_path, index_col=0, date_format="%Y-%m-%d %H:%M:%S", sep=delimiter
         )
         try:
-            weather_data.index = pd.to_datetime(weather_data.index, utc=True, unit="s")
+            weather_data.index = pd.to_datetime(weather_data.index, unit="s")
         except ValueError:
             weather_data.index = pd.to_datetime(weather_data.index, utc=True)
-            # weather_data.index = weather_data.index.tz_convert("Europe/Berlin")
+
         weather_data = weather_data.resample("15min").interpolate()
-        """weather_data = weather_data.reindex(
-            pd.date_range(
-                weather_data.index[0],
-                weather_data.index[-1] + 3 * pd.Timedelta("15min"),
-                freq="15min",
-            )
-        ).ffill()"""
-        weather_data.index = data_io.convert_to_unix(weather_data.index)
+        # add last missing 3 time steps
+        new_times = weather_data.index[-1] + pd.to_timedelta([15, 30, 45], "min")
+        # make 3 identical rows using the last row's values
+        extra = pd.DataFrame([weather_data.iloc[-1]] * 3, index=new_times)
+        weather_data = pd.concat([weather_data, extra])
 
         # In case the weather data has ERA5 format
         if all(
@@ -286,8 +281,7 @@ class PyPsaGridInputLoader(InputDataLoader):
             weather_data.rename(
                 columns={"t": "Outside Temperature", "G": "Solar Irradiation"}, inplace=True
             )
-        # self.weather_data = data_io.set_tz_index_to_utc(weather_data)
-        # self.weather_data.index -= datetime.timedelta(days=365)
+        self.weather_data = weather_data
 
         # check if data on ev capacity is available
         ev_capacity_data = None
@@ -310,7 +304,22 @@ class PyPsaGridInputLoader(InputDataLoader):
             pickle_name=scenario["name"],
             dt_h=self.dt_h,
             network_dir=network_data_path,
-            ev_capacity_data=ev_capacity_data)
+            ev_capacity_data=ev_capacity_data,
+        )
+
+        snapshots = self.grid.network.snapshots
+
+        # make sure input data matches in year an length before setting time index
+
+        data_io.assert_year(self.weather_data.index, snapshots[0].year)
+        data_io.assert_year(self.heat_demand.index, snapshots[0].year)
+
+        assert (len(snapshots) == len(self.weather_data)) & (
+            len(snapshots) == len(self.heat_demand)
+        ), "Input data length does not match grid data length."
+
+        self.weather_data.index = pd.Index(snapshots)
+        self.heat_demand.index = pd.Index(snapshots)
 
     def get_sys_ids(self):
         return self.grid.sys_ids
@@ -361,12 +370,8 @@ class PyPsaGridInputLoader(InputDataLoader):
         # check for EV data
         if any(sys_id in key for key in self.grid.evs.index) and self._model_evs:
             unit_id = next((key for key in self.grid.evs.index if sys_id in key), None)
-            # gets processed ev data
-            data_dict = self.grid.get_ev_soc_ts().loc[self.time_index, unit_id].to_dict("series")
+            data_dict = self.grid.get_ev_ts()[unit_id].to_dict("series")
             data.update(data_dict)
-
-            # Concatenate the new columns along axis=1 (columns)
-            # ev_data = pd.concat([ev_data] + charging_data_list, axis=1)
 
         try:
             ts_data = pd.DataFrame()
@@ -410,6 +415,8 @@ class PyPsaGridInputLoader(InputDataLoader):
                 else self.grid.heat_pumps.loc[unit_id, "p_set"]
             )
             if any(col in sys_id for col in self.heat_demand.columns):  # Heat demand available
+                if (heat_pump_size == 0) and (self.grid.hp_p[unit_id].max() > 0):
+                    heat_pump_size = self.grid.hp_p[unit_id].max() * 1.1
                 bus_name = next((col for col in self.heat_demand.columns if col in sys_id), None)
                 heat_demand_ts = self.heat_demand[bus_name]
                 thermal_mass, heat_rate = self.get_thermal_parameters_from_water_tank(

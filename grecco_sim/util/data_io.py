@@ -62,53 +62,6 @@ def read_ts(
 
 
 def get_charging_data(ts_in, dt_h):
-    # get parking duration ans soc data while ev is available for charging
-    ts_out = pd.DataFrame(
-        index=ts_in.index, columns=["until_departure", "initial_soc", "target_soc"]
-    )
-
-    # Filter non-zero values
-    ts_ev_connected = ts_in["cp"][ts_in["cp"] != 0]
-
-    # Create a grouping that increments if the time difference is not 15 minutes
-    group = (ts_ev_connected.index.to_series().diff() != pd.Timedelta("15min")).cumsum()
-
-    # Combine the series and group into a DataFrame
-    df_temp = pd.concat([ts_ev_connected, group], axis=1)
-    df_temp.columns = ["cp", "group"]
-
-    df_temp.columns = ["cp", "group"]
-
-    # Group by the block (using group and the value) and record start and end times
-    availability = (
-        df_temp.groupby(["group"])
-        .apply(lambda x: pd.Series({"start_time": x.index[0], "end_time": x.index[-1]}))
-        .reset_index(drop=True)
-    )
-
-    # Get time steps until departure (and interpolate soc)
-    for idx, row in availability.iterrows():
-        start_time = row["start_time"]
-        end_time = row["end_time"]
-        init_soc = ts_in.loc[start_time, "soc_min_percent"] / 100
-        target_soc = ts_in.loc[end_time, "soc_max_percent"] / 100
-        if math.isnan(target_soc):
-            target_soc = ts_in.loc[
-                end_time - pd.Timedelta("15min"), "soc_max_percent"
-            ]  # this seems to be a bug in the input data
-        if target_soc < init_soc:
-            target_soc = init_soc
-        until_departure = (end_time - start_time) / dt_h
-        ts_out.loc[start_time:end_time, "until_departure"] = np.arange(
-            until_departure, until_departure - len(ts_in.loc[start_time:end_time]), -1
-        )
-        ts_out.loc[start_time:end_time, "initial_soc"] = init_soc
-        ts_out.loc[start_time:end_time, "target_soc"] = target_soc
-
-    return ts_out
-
-
-def get_new_charging_data(ts_in, dt_h):
     """Constructs the charging processes data from the input time series.
 
     Input: ts_in is a DataFrame, snapshot index and soc values for a single EV.
@@ -201,31 +154,6 @@ def load_sizing(in_file_name: Path) -> dict[str, dict[str, type_defs.SysPars]]:
     }
 
 
-def set_tz_index_to_utc(df: pd.DataFrame) -> pd.DataFrame:
-    """df.tz_localize raises an Error on already localized data. This method
-    implements it in a more robust fashion.
-
-    Args:
-        df: input dataframe.
-
-    Returns:
-        pd.DataFrame: The input dataframe with utc_localized index.
-    """
-
-    localized_df = df.copy()
-
-    tz_index = pd.DatetimeIndex(df.index)
-
-    if tz_index.tz is None:
-        tz_index = tz_index.tz_localize("utc")
-    else:
-        tz_index = tz_index.tz_convert("Europe/Berlin")
-
-    localized_df.index = tz_index
-
-    return localized_df
-
-
 def convert_to_unix(idx: pd.Index, assume_tz="UTC"):
     # Build naive/aware DatetimeIndex
 
@@ -265,17 +193,14 @@ def get_csv_delimiter(file_path):
 
 
 def load_pickled_grid(
-        pickle_name: str,
-        dt_h: datetime.timedelta,
-        network_dir: Path,
-        ev_capacity_data: Optional[Path]) -> pypsa.Network:
-
-    """ Pickling avoids repetition of costly Grid object creation.
+    pickle_name: str, dt_h: datetime.timedelta, network_dir: Path, ev_capacity_data: Optional[Path]
+) -> pypsa.Network:
+    """Pickling avoids repetition of costly Grid object creation.
 
     pickle_name: The identifier of the pickle file.
     dt_h: step size is used for the creation of Grid object.
     network_dir: Network data location.
-    ev_capacity_data: ToDo: Insert short data description. """
+    ev_capacity_data: ToDo: Insert short data description."""
 
     p = config.data_root() / "tmp" / f"pickled_grid_{pickle_name}.pkl"
 
@@ -298,3 +223,11 @@ def load_pickled_grid(
             pickle.dump(n, f)
 
     return n
+
+
+def assert_year(ts: pd.Series, year: int):
+    """Check that the time series covers the specified year."""
+    if type(ts) is not pd.DatetimeIndex:
+        ts = pd.to_datetime(ts, utc=True)
+    if ts[0].year != year and ts[-1].year != year:
+        raise ValueError(f"Time series does not cover year {year}.")

@@ -35,7 +35,6 @@ class SimulationSetup(object):
             freq=self.run_params.dt,
             periods=self.run_params.sim_horizon,
         )
-        self.time_index = data_io.convert_to_unix(self.time_index)
         self.sys_ids = []
 
     def _get_nodes(self, opt_pars: type_defs.OptParameters):

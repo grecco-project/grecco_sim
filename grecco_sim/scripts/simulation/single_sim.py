@@ -1,23 +1,25 @@
 from typing import Optional
 import pathlib
 import datetime
-import zoneinfo
+import pytz
 import matplotlib.pyplot as plt
 
 from grecco_sim.simulator import simulation_setup
 from grecco_sim.util import config, type_defs, logger
 
 
-def build_opfingen_scenario(data_root: pathlib.Path, year_int) -> dict:
+def build_opfingen_scenario(
+    data_root: pathlib.Path, year: int, ev_scenario: Optional[str] = ""
+) -> dict:
     """Create the OPFINGEN scenario dictionary."""
 
     return {
-        "name": "opfingen_2033_c",
+        "name": f"opfingen_{year}{ev_scenario}",
         "n_agents": 4,
-        "grid_data_path": data_root / f"{year}" / "2033_evconservative",
+        "grid_data_path": data_root / f"{year}" / f"{year}{ev_scenario}",
         "weather_data_path": data_root / f"{year}" / "weather_data.csv",
-        "ev_capacity_data_path": data_root / f"{year}" / "synpro_ev_data_pool.csv",
-        "heat_demand_data_path": data_root / f"{year}" / "2033_evconservative" / "heat_demand.csv",
+        "ev_capacity_data_path": data_root / "synpro_ev_data_pool.csv",
+        "heat_demand_data_path": data_root / f"{year}" / f"{year}{ev_scenario}" / "heat_demand.csv",
         "hp": True,
         "ev": True,
         "bat": True,
@@ -25,12 +27,12 @@ def build_opfingen_scenario(data_root: pathlib.Path, year_int) -> dict:
 
 
 def run_simulation(
-        coord_type: str,
-        start_time: datetime.datetime,
-        days: int,
-        scenario: dict,
-        sim_name: Optional[str] = None):
-
+    coord_type: str,
+    start_time: datetime.datetime,
+    days: int,
+    scenario: dict,
+    sim_name: Optional[str] = None,
+):
     """Set up and run the simulation."""
     date = start_time.date()
 
@@ -75,21 +77,23 @@ if __name__ == "__main__":
     #   If that is not possible, leave a comment on why.
 
     data_root = config.data_root()
-    year = 2033
+    year = "full_el"
 
     # --- Configuration ---
     coordinators = ["none", "plain_grid_fee", "local_self_suff", "central"]
     coordinator_name = coordinators[0]
     n_days = 10
 
-    start = datetime.datetime(
-        year=2019,
-        month=1,
-        day=1,
-        hour=0,
-        tzinfo=zoneinfo.ZoneInfo("Europe/Berlin"))
+    start = datetime.datetime(year=2023, month=1, day=1, hour=0)
 
-    scenario = build_opfingen_scenario(data_root, year)
+    ev_scenarios = [
+        "_evconservative",
+        "_evextreme",
+        "",
+    ]  # no difference for 2024, then either select conservative or extreme
+    ev = ev_scenarios[0]
+
+    scenario = build_opfingen_scenario(data_root, year, ev)
 
     sim_name = f"{coordinator_name}_{year}_hp_test"
 

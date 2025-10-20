@@ -123,10 +123,11 @@ class Grid(object):
             }
         )
         self.heat_pumps["p_set"] *= 1000.0
-        self.heat_pumps["s_nom"] *= 1000.0
+        if "s_nom" in self.heat_pumps.columns:
+            self.heat_pumps["s_nom"] *= 1000.0
 
         self.hp_p = self.network.loads_t["p_set"][self._ind_hps]
-        # if self.network.loads.loc[self._ind_hps, "p_set"] == 0 use "s_nom" instead (input data bug from synpro)
+
         self.hp_p = self.hp_p.rename(
             columns={
                 i: self._sys_id(
@@ -206,7 +207,7 @@ class Grid(object):
         )
 
         # ts data for EVs
-        self.ev_data = self.get_new_ev_data(_evs)  # for data after 2023 data pass _evs
+        self.ev_data = self.get_ev_data(_evs)
         self.ev_data = self.ev_data.rename(
             columns={
                 i: self._sys_id(
@@ -221,25 +222,25 @@ class Grid(object):
         )
 
     def get_load_ts(self) -> pd.DataFrame:
-        return data_io.set_tz_index_to_utc(self.load_p)
+        return self.load_p
 
     def get_pv_ts(self) -> pd.DataFrame:
-        return data_io.set_tz_index_to_utc(self.pv_p)
+        return self.pv_p
 
     def get_hp_ts(self) -> pd.DataFrame:
-        return data_io.set_tz_index_to_utc(self.hp_p)
+        return self.hp_p
 
     def get_bat_ts(self) -> pd.DataFrame:
-        return data_io.set_tz_index_to_utc(self.bat_p)
+        return self.bat_p
 
     def get_ev_ts(self) -> pd.DataFrame:
-        return data_io.set_tz_index_to_utc(self.ev_p)
+        return self.ev_p
 
     def get_bat_soc_ts(self) -> pd.DataFrame:
-        return data_io.set_tz_index_to_utc(self.bat_soc)
+        return self.bat_soc
 
-    def get_ev_soc_ts(self) -> pd.DataFrame:
-        return data_io.set_tz_index_to_utc(self.ev_data)
+    def get_ev_ts(self) -> pd.DataFrame:
+        return self.ev_data
 
     def get_pv_data(self):
         installed_pv = self.network.generators[self.network.generators.carrier == "solar"].p_set
@@ -268,46 +269,7 @@ class Grid(object):
 
         return _evs
 
-    def get_ev_data(self):
-        plugged_in = self.network.storage_units_t.plugged_in[self._ind_evs].fillna(0)
-        soc_departure_max_percent = self.network.storage_units_t.soc_departure_max_percent
-        soc_departure_min_percent = self.network.storage_units_t.soc_departure_min_percent
-
-        ev_data_in = pd.concat(
-            {
-                "cp": plugged_in,
-                "soc_max_percent": soc_departure_max_percent,
-                "soc_min_percent": soc_departure_min_percent,
-            },
-            axis=1,
-        )
-
-        # Swap MultiIndex levels
-        ev_data_in.columns = ev_data_in.columns.swaplevel(0, 1)
-        # Sort index to group 'A' and 'B' together
-        ev_data = ev_data_in.sort_index(axis=1)
-        if ev_data.index.tz is None:
-            ev_data = ev_data.tz_localize("UTC")
-            # ev_data = ev_data.tz_convert("Europe/Berlin")
-
-        # interpolate soc data blockiwse while plugged in and get parking duration
-        # Compute and add "soc" and "until_departure" for each sys_id
-        # Store computed charging data in a list
-        charging_data_list = []
-
-        # Iterate over each system ID (level 0 column)
-        for sys_id in ev_data.columns.levels[0]:
-            charging_data = data_io.get_charging_data(ev_data[sys_id], self.dt_h)
-            charging_data.columns = pd.MultiIndex.from_product(
-                [[sys_id], charging_data.columns]
-            )  # Ensure correct MultiIndex
-            charging_data_list.append(charging_data)
-
-        # Concatenate the new columns along axis=1 (columns)
-        ev_data = pd.concat([ev_data] + charging_data_list, axis=1)
-        return ev_data
-
-    def get_new_ev_data(self, _evs):
+    def get_ev_data(self, _evs):
         plugged_in = self.network.storage_units_t.plugged_in[self._ind_evs].fillna(0)
         plugged_in = plugged_in.rename(
             columns={
@@ -341,9 +303,10 @@ class Grid(object):
         # Iterate over each system ID (level 0 column)
         for sys_id in ev_data.columns.levels[0]:
             try:
-                charging_data = data_io.get_new_charging_data(ev_data[sys_id], self.dt_h)
+                charging_data = data_io.get_charging_data(ev_data[sys_id], self.dt_h)
             except:
                 print(f"faulty data for {sys_id}")
+
             charging_data.columns = pd.MultiIndex.from_product(
                 [[sys_id], charging_data.columns]
             )  # Ensure correct MultiIndex
@@ -351,6 +314,8 @@ class Grid(object):
 
         # Concatenate the new columns along axis=1 (columns)
         ev_data = pd.concat([ev_data] + charging_data_list, axis=1)
+        # remove tz information
+        ev_data.index = ev_data.index.tz_localize(None)
         return ev_data
 
     def rename_duplicates(self, type: str) -> pd.DataFrame:
