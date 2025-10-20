@@ -128,7 +128,7 @@ class SimulationResult(object):
         )
 
         self._agents_ts = {
-            sys_id: generate_agent_ts(raw_output[sys_id], time_index) for sys_id in raw_output
+            sys_id: compile_agent_ts(raw_output[sys_id], time_index) for sys_id in raw_output
         }
 
         self._exec_time = exec_time
@@ -195,41 +195,48 @@ class SimulationResult(object):
         data_io.dump_parameterization(out_dir / "parameters.json", all_pars)
 
 
-def generate_agent_ts(agent_output, time_index):
-    """Take raw agents results and generate dataframe fro each agent."""
+def compile_agent_ts(result_dict, time_index) -> pd.DataFrame:
+    """ Compile dataframe for an individual agent based on result dict.
 
-    individual_dfs = [
-        pd.DataFrame(data={key: agent_output[key] for key in ["grid", "c_sup", "c_feed"]})
-    ]
+    result_dict: Dictionary of individual agent results from simulation.
+    time_index: Simulation time index is set as agent dataframe index.
 
-    individual_dfs += [pd.DataFrame(data={"p_el_load": agent_output["load"]["p_load"]})]
+    Returns:
+        DataFrame: Agents individual results for each time step.
+    """
 
-    if "pv" in agent_output:
-        individual_dfs += [pd.DataFrame(data={"p_el_pv": agent_output["pv"]["p_ac"]})]
+    data = {}
 
-    if "bat" in agent_output:
-        individual_dfs += [
-            pd.DataFrame(data={f"bat_{key}": agent_output["bat"][key][:-1] for key in ["soc"]}),
-            pd.DataFrame(
-                data={f"bat_{key}": agent_output["bat"][key] for key in ["p_ac", "p_net"]}
-            ),
-        ]
+    # Total load.
+    for key in ["grid", "c_sup", "c_feed"]:
+        data[key] = result_dict[key]
 
-    if "hp" in agent_output:
-        individual_dfs += [
-            pd.DataFrame(
-                data={f"hp_{key}": agent_output["hp"][key][:-1] for key in ["temp", "losses"]}
-            ),
-            pd.DataFrame(
-                data={f"hp_{key}": agent_output["hp"][key] for key in ["p_in", "q_hp", "u_ext"]}
-            ),
-        ]
+    # Baseload
+    data["p_el_load"] = result_dict["load"]["p_load"]
 
-    if "ev" in agent_output:
-        individual_dfs += [
-            pd.DataFrame(data={f"ev_{key}": agent_output["ev"][key][:-1] for key in ["soc"]}),
-            pd.DataFrame(data={f"ev_{key}": agent_output["ev"][key] for key in ["p_ac", "p_net"]}),
-        ]
+    # PV
+    if "pv" in result_dict:
+        data["p_el_pv"] = result_dict["pv"]["p_ac"]
 
-    df = pd.concat(individual_dfs, axis=1)
-    return df.set_index(time_index)
+    # BSS
+    if "bat" in result_dict:
+        data["bat_p_ac"] = result_dict["bat"]["p_ac"]
+        data["bat_p_net"] = result_dict["bat"]["p_net"]
+        # ToDo: Inser reason: Why do we omitt soc[-1]?
+        data["bat_soc"] = result_dict["bat"]["soc"][:-1]
+
+    # HP
+    if "hp" in result_dict:
+        data["hp_temp"] = result_dict["hp"]["temp"][:-1]
+        data["hp_losses"] = result_dict["hp"]["losses"][:-1]
+        data["hp_p_in"] = result_dict["hp"]["p_in"]
+        data["hp_q_hp"] = result_dict["hp"]["q_hp"]
+        data["hp_u_ext"] = result_dict["hp"]["u_ext"]
+
+    # EV
+    if "ev" in result_dict:
+        data["ev_soc"] = result_dict["ev"]["soc"][:-1]
+        data["ev_p_ac"] = result_dict["ev"]["p_ac"]
+        data["ev_p_net"] = result_dict["ev"]["p_net"]
+
+    return pd.DataFrame(data=data, index=time_index)

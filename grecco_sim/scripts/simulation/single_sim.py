@@ -77,14 +77,14 @@ if __name__ == "__main__":
     #   If that is not possible, leave a comment on why.
 
     data_root = config.data_root()
-    year = "full_el"
+    year = "2033"
 
     # --- Configuration ---
     coordinators = ["none", "plain_grid_fee", "local_self_suff", "central"]
     coordinator_name = coordinators[0]
-    n_days = 10
+    n_days = 1
 
-    start = datetime.datetime(year=2023, month=1, day=1, hour=0)
+    start = datetime.datetime(year=2020, month=1, day=1, hour=0)
 
     ev_scenarios = [
         "_evconservative",

@@ -151,11 +151,14 @@ class SimulationSetup(object):
         # Write sim results to disc
         sim_result.record()
 
-        # Make evaluation
-        eval_res = simulation_eval.evaluate_sim(sim_result)
+        # Evaluate simulation.
+        eval_results = simulation_eval.evaluate_sim(sim_result)
 
         # Plot some results. Plotting function decides if plots must be shown based on run_pars
         plotter.make_plots(sim_result)
-        plotter.make_agent_plots(eval_res["agent_res"], sim_result.run_params, "all")
+        plotter.make_agent_plots(
+            eval_results["agent_res"],
+            sim_result.run_params,
+            "all")
 
-        return eval_res
+        return eval_results

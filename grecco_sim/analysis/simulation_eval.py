@@ -424,7 +424,8 @@ def _write_to_files(
 
 
 def evaluate_sim(sim_result: results.SimulationResult):
-    # Evaluate Simulation Results ==========================================
+    """ Calculate KPIs based on simulation result. """
+
     eval_res = _get_aggregated_ts_result(sim_result)
     eval_res["tag"] = sim_result.run_params.sim_tag
 
@@ -452,5 +453,8 @@ def evaluate_sim(sim_result: results.SimulationResult):
     # signal_analysis(sim_result.run_params, sim_result.agents_ts)
 
     res = {"general_res": eval_res, "agent_res": agent_kpis, "agent_stats": agent_stats}
+
+    # Attach loads to grid connection points.
+    reinforcement_costs = calculate_reinforcement_costs(n, eval_results)
 
     return res
