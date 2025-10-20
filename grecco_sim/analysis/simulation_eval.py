@@ -26,6 +26,8 @@ def _get_aggregated_ts_result(sim_results: results.SimulationResult):
         "agg_feed_back",
         "agg_signal",
         "congested_times",  # number of time steps where the grid was congested
+        "congested_pv",  # number of time steps where the grid was congested due to PV feed-in
+        "congested_load",  # number of time steps where the grid was congested
     }
 
     res_load = sim_results.ts_grid.sum(axis=1)
@@ -51,6 +53,8 @@ def _get_aggregated_ts_result(sim_results: results.SimulationResult):
     res["congested_times"] = len(res_load[res_load > sim_results.grid_pars.p_lim]) + len(
         res_load[res_load < -sim_results.grid_pars.p_lim]
     )
+    res["congested_pv"] = len(res_load[res_load < -sim_results.grid_pars.p_lim])
+    res["congested_load"] = len(res_load[res_load > sim_results.grid_pars.p_lim])
 
     windows = pd.DataFrame(columns=["time", "max_load", "max_feed"])
     for i, window in enumerate(res_load.rolling(10)):
@@ -176,10 +180,6 @@ def signal_analysis(run_params: type_defs.RunParameters, raw_output: dict[str, d
     fig_ref.tight_layout()
 
 
-import pandas as pd
-import numpy as np
-
-
 def agent_analysis(agent_ts: dict[str, pd.DataFrame], dt_h: float) -> pd.DataFrame:
     """
     KPIs for individual agents
@@ -190,7 +190,7 @@ def agent_analysis(agent_ts: dict[str, pd.DataFrame], dt_h: float) -> pd.DataFra
 
     DOCUMENTED_KPIS = {
         "grid_demand",  # Total demand from grid (kWh)
-        "energy_demand",  # Total energy demand (kWh)
+        "energy_consumption",  # Total energy consumption (kWh)
         "max_grid_demand",  # Maximum demand from grid (kW)
         "total_feed",  # Total feed in to grid (kWh)
         "max_feed",  # Maximum feed in to grid (kW)
@@ -279,7 +279,7 @@ def agent_analysis(agent_ts: dict[str, pd.DataFrame], dt_h: float) -> pd.DataFra
                     "battery_max_to_grid": battery_max_to_grid,
                     "overcharge_bat": int(np.count_nonzero(bat_soc > 1)),
                     "undercharge_bat": int(np.count_nonzero(bat_soc < 0)),
-                    "charging_cycle_equivalents": calculate_ccs(bat_p_net, dt_h),
+                    "charging_cycle_equivalents": calculate_ccs(bat_soc),
                 }
             )
 
@@ -339,14 +339,17 @@ def agent_analysis(agent_ts: dict[str, pd.DataFrame], dt_h: float) -> pd.DataFra
                     "undercharge_ev": int(np.count_nonzero(ev_soc < 0)),
                 }
             )
+        # Overall energy demand w/o battery
+        total_demand = (sum(res[energy_map[k]] for k in systems) + df["p_el_load"]).sum() * dt_h
+        res["energy_consumption"] = total_demand
 
         # PV metrics
         if "p_el_pv" in df.columns:
-            systems.append("pv")
             pv = df["p_el_pv"].to_numpy()
-            profit = (grid[feed_mask] * c_feed[feed_mask]).sum()
-            self_consumption = pv[demand_mask].sum() * dt_h
-            self_consumption += (pv[feed_mask] + grid[feed_mask]).sum() * dt_h
+            revenue = (grid[feed_mask] * c_feed[feed_mask]).sum()
+            self_consumption = (
+                pv.sum() + grid[feed_mask].sum()
+            ) * dt_h  # feed in at grid is negative, hence +
             try:
                 max_feed = grid[feed_mask].min()
             except ValueError:
@@ -355,31 +358,19 @@ def agent_analysis(agent_ts: dict[str, pd.DataFrame], dt_h: float) -> pd.DataFra
                 {
                     "total_feed": grid[feed_mask].sum(),
                     "max_feed": max_feed,
-                    "profit": profit,
+                    "revenue": revenue,
                     "self-consumption": self_consumption,
                 }
             )
-
-        # Overall energy demand
-        total_demand = (
-            sum(res[energy_map[k]] for k in systems if k in energy_map) + df["p_el_load"]
-        ).sum() * dt_h
-        res["energy_demand"] = total_demand
-
-        # self-consumption
-        if "pv" in systems:
+            # Self sufficiency
             if total_demand > 0:
-                res["self-sufficiency"] = res["self-consumption"] / total_demand
+                res["self-sufficiency"] = self_consumption / total_demand
             else:
                 res["self-sufficiency"] = np.nan
 
-        # Revenue calculation
-        res["revenue"] = abs(res.get("profit", 0)) - res.get("costs", 0)
-
+        # Profit calculation
+        res["profit"] = abs(res["revenue"]) - res["costs"]
         agents_res.loc[ag] = res
-
-    print("Agent analysis results")
-    print(agents_res)
 
     agent_stats = {
         "mean": agents_res.astype(float).mean(),
@@ -393,11 +384,10 @@ def agent_analysis(agent_ts: dict[str, pd.DataFrame], dt_h: float) -> pd.DataFra
     return agents_res, agent_stats
 
 
-def calculate_ccs(power: np.ndarray, dt_h: float) -> int:
-    throughput = np.abs(power).sum() * dt_h
-    count = throughput / 60.0
-
-    return count
+def calculate_ccs(soc: np.ndarray) -> int:
+    count = 0
+    diff = np.diff(soc)
+    charging = diff[diff > 0].sum()  # consider only charging phases
 
 
 # ================== Write results to file =============================
@@ -466,63 +456,3 @@ def evaluate_sim(sim_result: results.SimulationResult):
     res = {"general_res": eval_res, "agent_res": agent_kpis, "agent_stats": agent_stats}
 
     return res
-
-
-def compare_kpis(kpis_self_suff: dict[str, Any], kpis_none: dict[str, Any]):
-    """
-    Compare the KPIs of two simulations.
-    :param kpis_self_suff: KPIs of the self sufficiency simulation
-    :param kpis_none: KPIs of the none simulation
-    """
-    # consumption
-    print(
-        "Comparison of KPIs: Consumption self suff:",
-        kpis_self_suff["agg_consumption"],
-        "Consumption none:",
-        kpis_none["agg_consumption"],
-    )
-    print(f"share {kpis_self_suff['agg_consumption'] / kpis_none['agg_consumption']:.2%} of none")
-    print(
-        "Maximum load self suff:",
-        kpis_self_suff["max_load"],
-        "Maximum load none:",
-        kpis_none["max_load"],
-    )
-    print(f"share {kpis_self_suff['max_load'] / kpis_none['max_load']:.2%} of none")
-
-    print(
-        "Maximum feed in self suff:",
-        kpis_self_suff["max_feed"],
-        "Maximum feed in none:",
-        kpis_none["max_feed"],
-    )
-    print(f"share {kpis_self_suff['max_feed'] / kpis_none['max_feed']:.2%} of none")
-
-    print("Costs self suff:", kpis_self_suff["costs_all"], "Costs none:", kpis_none["costs_all"])
-    print(f"share {kpis_self_suff['costs_all'] / kpis_none['costs_all']:.2%} of none")
-
-
-if __name__ == "__main__":
-    data_path = pathlib.Path(__file__).parent.parent.parent / "results" / "default"
-    folder_names = sorted(
-        [f for f in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, f))]
-    )
-
-    # Get the last two folder names
-    latest_two = folder_names[-2:]
-    # Create full paths
-    latest_paths = [os.path.join(data_path, f) for f in latest_two]
-
-    self_suff_folder = latest_paths[0]
-    none_folder = latest_paths[1]
-    eval, flex_bus = evaluate_flex(self_suff_folder, none_folder)
-    print("Buses with flexibility:")
-    for bus in flex_bus:
-        print(bus)
-    for key, value in eval.items():
-        if not value["self suff superior"] and not value["indefinite"]:
-            print(f"{key} performes worse in self sufficiency than none")
-            print(f"{key}: {value}")
-        if key in flex_bus:
-            print(f"{key}: {value}")
-    # pass

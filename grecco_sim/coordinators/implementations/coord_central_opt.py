@@ -7,10 +7,10 @@ import numpy as np
 
 from grecco_sim.coordinators import coord_interface
 from grecco_sim.local_control import mycas
+from grecco_sim.local_control.physical import ocp_all_flex
 from grecco_sim.local_control.physical import common as phys_common
 from grecco_sim.local_control.solver import common as solver_common
 from grecco_sim.util import sig_types
-from grecco_sim.local_control.solver import local_gradient_descent
 from grecco_sim.util import type_defs
 from grecco_sim.util import helper
 
@@ -53,50 +53,40 @@ class CentralOptimizationCoordinator(coord_interface.CoordinatorInterface):
 
         flex_ocps = {}
         par_values = {}
-        model_confs = {}
+        all_sys_pars = {}
         # Collect sys_ids of those systems that get inflexible because there is no EV charge process
         poppables = []
 
         for sys_id, future in flex_futures.items():
             sys_pars = future._meta["_model_pars"]
-            model_conf = solver_common.dict_to_model_conf(sys_pars)
-            if "ev" in model_conf:
-                ev_pars = [pars for pars in sys_pars.values() if pars.system == "ev"][0]
-                charge_process = phys_common.get_charge_process(
-                    future._meta["state"], current_horizon, ev_pars
+            all_sys_pars[sys_id] = sys_pars
+
+            charge_processes = {
+                flex_id: phys_common.get_charge_process(
+                    future._meta["state"], self.horizon, ev_pars
                 )
-                if charge_process is None:
-                    model_conf = tuple(sys for sys in model_conf if sys != "ev")
-                    if model_conf in [("load",), ("load", "pv")]:
-                        poppables.append(sys_id)
-                        continue
+                for flex_id, ev_pars in sys_pars.items()
+                if ev_pars.system == "ev"
+            }
+            charge_processes = {
+                key: val for key, val in charge_processes.items() if val is not None
+            }
 
-            # Define the charge_process variable to be None (for interface purposes)
-            else:
-                charge_process = None
-
-            par_values[sys_id] = self._get_parameter_values(
-                future._meta["fc"], future._meta["state"], model_conf
+            ocp, grid_var = ocp_all_flex.get_ocp(
+                sys_id, current_horizon, sys_pars, self.opt_pars, charge_processes
             )
 
-            model_confs[sys_id] = model_conf
-
-            flex_ocps[sys_id] = phys_common.get_plain_ocp(
-                sys_id,
-                current_horizon,
-                model_conf,
-                sys_pars,
-                self.opt_pars,
-                charge_process,
+            par_values[sys_id] = solver_common.get_par_values_arbitrary_naming(
+                sys_pars, future._meta["state"], future._meta["fc"]
             )
 
-        for sys_id in poppables:
-            inflex_sum += flex_futures[sys_id].yg
-            inflex_futures[sys_id] = flex_futures.pop(sys_id)
+        # for sys_id in poppables:
+        # inflex_sum += flex_futures[sys_id].yg
+        # inflex_futures[sys_id] = flex_futures.pop(sys_id)
 
         nlp_solver = _combine(flex_ocps, inflex_sum, self.grid, self.opt_pars)
 
-        res = _solve(nlp_solver, par_values, model_confs, current_horizon)
+        res = _solve(nlp_solver, par_values, current_horizon)
         if False:
             import matplotlib.pyplot as plt
 
@@ -201,7 +191,7 @@ def _combine(
     return mycas.MyNLPSolver(central_ocp, solver=opt_pars.solver_name)
 
 
-def _solve(solver: mycas.MyNLPSolver, par_sets: dict[str, dict], model_confs, horizon):
+def _solve(solver: mycas.MyNLPSolver, par_sets: dict[str, dict], horizon):
 
     par_values = {
         f"{ag_tag}_{par_name}": par_sets[ag_tag][par_name]

@@ -7,7 +7,7 @@ from grecco_sim import coordinators
 
 from grecco_sim.simulator import sim_input
 from grecco_sim.util.type_defs import RunParameters
-from grecco_sim.util import logger
+from grecco_sim.util import logger, data_io
 
 from grecco_sim.simulator import simulator
 from grecco_sim.sim_models import grid_node

@@ -72,9 +72,9 @@ class RunParameters:
                 Path(__file__).parent.parent.parent / "results" / self.output_file_dir
             )
 
-        if isinstance(self.start_time, str):
-            self.start_time = datetime.datetime.fromisoformat(self.start_time)
-        assert self.start_time.tzinfo is not None, "Specify a time zone for simulation range."
+        # if isinstance(self.start_time, str):
+        #    self.start_time = datetime.datetime.fromisoformat(self.start_time)
+        # assert self.start_time.tzinfo is not None, "Specify a time zone for simulation range."
 
     @property
     def dt_h(self) -> float:
