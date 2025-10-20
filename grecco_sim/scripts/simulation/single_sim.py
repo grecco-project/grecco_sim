@@ -6,26 +6,28 @@ import matplotlib.pyplot as plt
 from grecco_sim.simulator import simulation_setup
 from grecco_sim.util import type_defs, logger
 
+YEAR = "2028"
 OPFINGEN = {
-    "name": "opfingen_2028",
+    "name": f"opfingen_{YEAR}",
     "n_agents": 4,
     # Create symlink into data directory!
     "grid_data_path": pathlib.Path(__file__).parent.parent.parent.parent
     / "data"
-    / "2028"
-    / "2028_evconservative",
+    / YEAR
+    / f"{YEAR}_ev_conservative",
     "weather_data_path": pathlib.Path(__file__).parent.parent.parent.parent
     / "data"
-    / "2028"
+    / YEAR
     / "weather_data.csv",
-    "ev_capacity_data_path": pathlib.Path(__file__).parent.parent.parent.parent
-    / "data"
-    / "synpro_ev_data_pool.csv",  # if file not available, capacities are set to 60kWh
     "heat_demand_path": pathlib.Path(__file__).parent.parent.parent.parent
     / "data"
-    / "2028"
-    / "2028"
+    / YEAR
+    / YEAR
     / "heat_demand.csv",
+    "energy_price_path": pathlib.Path(__file__).parent.parent.parent.parent
+    / "data"
+    / YEAR
+    / "energy_prices_entso.csv",
     "hp": True,
     "ev": True,
     "bat": True,
@@ -38,7 +40,7 @@ def main(coord_type: str, start_time: datetime.datetime, days: int = 7, name: st
     if not name:
         name = f"{coord_type}_{date}"
     run_parameters = simulation_setup.RunParameters(
-        sim_horizon=days,  # 24 * 4 * days,
+        sim_horizon=24*4*days,  # 24 * 4 * days, this is in intervals i.e. 15 min intervals
         # start_time=datetime.datetime(2024, 1, 1, 0, 0, 0, tzinfo=pytz.utc),
         start_time=start_time,
         max_market_iterations=4,
@@ -74,7 +76,7 @@ def main(coord_type: str, start_time: datetime.datetime, days: int = 7, name: st
 if __name__ == "__main__":
 
     coord = "plain_grid_fee"  # "none", "plain_grid_fee", "local_self_suff", "central_optimization", "second_order", "admm"
-    start = datetime.datetime(2019, 1, 1, 0, 0, 0, tzinfo=pytz.utc)
+    start = datetime.datetime(2019, 1, 1, 0, 0, 0, tzinfo=pytz.utc) # (yyyy, m, d, h, m, s) time resolution only 15 mins
     days = 3
 
     main(coord, start, days, name="test_28")

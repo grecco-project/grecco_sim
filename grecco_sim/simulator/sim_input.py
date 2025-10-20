@@ -233,6 +233,36 @@ class PyPsaGridInputLoader(InputDataLoader):
 
         # TODO: Discuss: Would be handy to have a GrECCo config class that
         #   handles data verification and default values?
+
+        # Download annual Energy Prices from ENTSO-E
+        # https://newtransparency.entsoe.eu/
+        if "energy_price_path" in scenario:
+
+            file_path = pathlib.Path(scenario["energy_price_path"])
+            prices =  pd.read_csv(file_path)
+
+            prices.columns = prices.columns.str.strip()
+            prices["start_time"] = prices["MTU (CET/CEST)"].str.split(" - ").str[0]
+            prices["start_time"] = pd.to_datetime(
+                prices["MTU (CET/CEST)"].str.split(" - ").str[0].str.split(" \(").str[0],
+                format="%d/%m/%Y %H:%M:%S"
+            )
+
+            # get the sequence number (1 or 2)
+            prices["Sequence"] = prices["Sequence"].str.extract(r"(\d+)").astype(int)
+
+            prices = prices.drop_duplicates(subset=["start_time", "Sequence"])
+            prices = prices.pivot(
+                index="start_time", columns="Sequence", values="Day-ahead Price (EUR/MWh)"
+            )
+            prices.columns = [f"sequence_{c}" for c in prices.columns]
+
+            prices = prices.sort_index().asfreq("15min").tz_localize("UTC")
+            self.c_sup_list = (
+                prices["sequence_1"].reindex(self.time_index, method="ffill").to_numpy(dtype=float)
+                / self.MWH_TO_KWH
+            )
+
         if "grid_data_path" and "weather_data_path" in scenario:
             network_data_path = pathlib.Path(scenario["grid_data_path"])
             weather_data_path = pathlib.Path(scenario["weather_data_path"])
@@ -338,6 +368,7 @@ class PyPsaGridInputLoader(InputDataLoader):
             data[f"{unit_id}_p"] = self.grid.get_hp_ts().loc[self.time_index, unit_id]
             for col_name in self.weather_data:
                 data[col_name] = self.weather_data.loc[self.time_index, col_name]
+
         # check for heat demand data
         if any(col in sys_id for col in self.heat_demand.columns):
             # if the system has a heat demand, add it to the data
@@ -377,7 +408,8 @@ class PyPsaGridInputLoader(InputDataLoader):
         # TODO @Rebecca, if you want to use time varying prices. Find a way to read your input here.
         # This example generates a time varying price which increases from 0.1 to 0.3
         # over the horizon
-        # ts_data["c_sup"] = 0.2 * np.arange(len(ts_data.index)) / len(ts_data.index) + 0.1
+        if hasattr(self, "c_sup_list"):
+            ts_data["c_sup"] = self.c_sup_list
 
         return ts_data
 
