@@ -20,6 +20,7 @@ def build_opfingen_scenario(
         "weather_data_path": data_root / f"{year}" / "weather_data.csv",
         "ev_capacity_data_path": data_root / "synpro_ev_data_pool.csv",
         "heat_demand_data_path": data_root / f"{year}" / f"{year}{ev_scenario}" / "heat_demand.csv",
+        "energy_price_path": data_root/ f"{year}" / "energy_prices_entso.csv",
         "hp": True,
         "ev": True,
         "bat": True,
