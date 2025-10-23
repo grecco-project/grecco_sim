@@ -1,147 +1,184 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
 import dataclasses
+from typing import Any, Dict, Iterable, Mapping, Tuple
 import os
-from typing import Any
 import numpy as np
 import pandas as pd
+from pandas import DataFrame, Series
 import pathlib
 
-from grecco_sim.sim_models import battery
+from grecco_sim.sim_models import (
+    battery,
+)  # noqa: F401 (kept for compatibility, may be used externally)
 from grecco_sim.util import sig_types
 from grecco_sim.simulator import results
 from grecco_sim.util import type_defs
 from grecco_sim.util import style
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-def _get_aggregated_ts_result(sim_results: results.SimulationResult):
+
+def _masked_sum(values: np.ndarray, mask: np.ndarray, dt_h: float | None = None) -> float:
+    """Sum of `values` over `mask`. If `dt_h` is provided, multiply by it.
+    Returns 0.0 if mask selects no items.
     """
-    Calculate the KPIs in DOCUMENTED_KPIS from the aggregated grid power profile:
+    if values.size == 0:
+        return 0.0
+    if mask.size == 0:
+        return 0.0
+    sel = values[mask]
+    if sel.size == 0:
+        return 0.0
+    total = float(sel.sum())
+    return total * dt_h if dt_h is not None else total
+
+
+def _safe_max(values: np.ndarray, default=np.nan) -> float:
+    return float(values.max()) if values.size > 0 else float(default)
+
+
+def _safe_min(values: np.ndarray, default=np.nan) -> float:
+    return float(values.min()) if values.size > 0 else float(default)
+
+
+# ---------------------------------------------------------------------------
+# Aggregated profile KPIs
+# ---------------------------------------------------------------------------
+
+
+def _get_aggregated_ts_result(sim_results: results.SimulationResult) -> pd.Series:
+    """KPIs computed from the aggregated grid power profile.
+
+    Returns a **pd.Series** with the documented KPI fields as index.
     """
-    # Define a set to keep track of the returned elements of the dict.
     DOCUMENTED_KPIS = {
-        "dt_h",  # time step of profile in hours
-        "max_load",  # maximum load (positive) of aggregated profile
-        "max_feed",  # minimum of aggregated profile (feed-back)
-        "agg_consumption",
-        "agg_feed_back",
+        "dt_h",
+        "max_load",  # max positive demand (kW)
+        "max_feed",  # max export magnitude (kW, positive value)
+        "MV_demand",  # total consumption (kWh)
+        "MV_feed",  # total export to upper grid (kWh)
         "agg_signal",
-        "congested_times",  # number of time steps where the grid was congested
-        "congested_pv",  # number of time steps where the grid was congested due to PV feed-in
-        "congested_load",  # number of time steps where the grid was congested
+        "congested_times",
+        "congested_pv",
+        "congested_load",
     }
 
-    res_load = sim_results.ts_grid.sum(axis=1)
-    dt_h = (res_load.index[1] - res_load.index[0]).total_seconds() / 3600.0
+    # Sum agents across columns -> aggregated net power at PCC (kW)
+    res_load: Series = sim_results.ts_grid.sum(axis=1)
+    dt_h = sim_results.run_params.dt.seconds / 3600
 
-    res = {}
+    data: Dict[str, Any] = {}
+    data["dt_h"] = dt_h
 
-    res["dt_h"] = dt_h
+    # Peak import/export magnitudes in kW
+    data["max_load"] = max(0.0, float(res_load.max()))
+    data["max_feed"] = max(0.0, float(-res_load.min()))
 
-    res["max_load"] = max(0, res_load.max())
-    res["max_feed"] = max(0, -res_load.min())
+    # Energy integrals in kWh (positive import, negative export)
+    pos = res_load > 0
+    neg = res_load < 0
+    data["MV_demand"] = float(res_load.loc[pos].sum()) * dt_h
+    data["MV_feed"] = float(-res_load.loc[neg].sum()) * dt_h
 
-    res["agg_consumption"] = res_load.loc[res_load > 0].sum() * dt_h
-    res["agg_feed_back"] = -res_load.loc[res_load < 0].sum() * dt_h
-
-    # Signals
+    # Signals (sum all assigned grid fee columns for all systems)
     sys_ids = sim_results.sys_ids
-    res["agg_signal"] = (
-        sim_results.assigned_grid_fees.loc[:, [f"fee_{sys_id}" for sys_id in sys_ids]].sum().sum()
-    )
+    fee_cols = [
+        f"fee_{sys_id}"
+        for sys_id in sys_ids
+        if f"fee_{sys_id}" in sim_results.assigned_grid_fees.columns
+    ]
+    if fee_cols:
+        data["agg_signal"] = float(sim_results.assigned_grid_fees.loc[:, fee_cols].to_numpy().sum())
+    else:
+        data["agg_signal"] = 0.0
 
-    # Congestions
-    res["congested_times"] = len(res_load[res_load > sim_results.grid_pars.p_lim]) + len(
-        res_load[res_load < -sim_results.grid_pars.p_lim]
-    )
-    res["congested_pv"] = len(res_load[res_load < -sim_results.grid_pars.p_lim])
-    res["congested_load"] = len(res_load[res_load > sim_results.grid_pars.p_lim])
+    # Congestion counts (power limit p_lim in kW)
+    p_lim = float(sim_results.grid_pars.p_lim)
+    data["congested_load"] = int((res_load > p_lim).sum())
+    data["congested_pv"] = int((res_load < -p_lim).sum())
+    data["congested_times"] = int(data["congested_load"] + data["congested_pv"])
 
-    windows = pd.DataFrame(columns=["time", "max_load", "max_feed"])
-    for i, window in enumerate(res_load.rolling(10)):
-        windows.loc[i, :] = [window.index[0], window.max(), -window.min()]
-
-    assert set(res.keys()) == DOCUMENTED_KPIS, "Make sure that the return is correctly documented!"
-
-    return res
+    # Ensure exact key set
+    assert set(data.keys()) == DOCUMENTED_KPIS, "Make sure that the return is correctly documented!"
+    return pd.Series(data)
 
 
-# TODO bring the agent analysis result to the set approach from above. It seems more straightforward.
-@dataclass
-class AgentAnalysisResult:
-    # Combined individual costs (owed to utility, no coordination penalties)
-    costs_all: float
-    # time series of summed energy in storages
-    en_in_bat_ts: np.ndarray
-    # Net charged energy over sim horizon
-    charged_energy: float
-    # Combined capacity of all individual storages
-    combined_capacity: float
-    # Summed up losses through battery operation
-    losses_bat: float
-    # feed in aggregated over all agents
-    agg_feed: float
-    # feed in from battery aggregated over all agents
-    agg_bat_to_grid: float
+# ---------------------------------------------------------------------------
+# Flex analysis across agents
+# ---------------------------------------------------------------------------
 
 
 def flex_analysis(
-    agent_ts: dict[str, pd.DataFrame], sizing: dict[str, type_defs.SysParsPVBat], dt_h: float
-):
-    """Do some analysis of time series of individual agents."""
-    costs_all = 0
-    en_in_bat_ts = None
+    agent_ts: Mapping[str, DataFrame],
+    sizing: Mapping[str, type_defs.SysParsPVBat],
+    dt_h: float,
+) -> pd.Series:
+    """Aggregate per-agent quantities for quick flex overview.
 
+    Returns a **pd.Series** so the whole evaluation can be composed into a
+    single-row DataFrame easily.
+    """
+    costs_all = 0.0
+    en_in_bat_ts: np.ndarray | None = None
     combined_cap = 0.0
     en_loss = 0.0
-
     agg_feed = 0.0
     agg_bat_to_grid = 0.0
 
     for sys_id, df in agent_ts.items():
-
-        pv = (
-            df["p_el_pv"]
-            if "p_el_pv" in df.columns
-            else pd.Series(index=df.index, data=np.zeros(len(df.index)))
-        )
-
+        pv = df["p_el_pv"] if "p_el_pv" in df.columns else pd.Series(0.0, index=df.index)
         grid = df["grid"]
-        supp = grid[grid > 0]
-        feed = grid[grid < 0]
 
-        costs_supp = (supp * df["c_sup"][grid > 0]).sum() * dt_h
-        costs_feed = (feed * df["c_feed"][grid < 0]).sum() * dt_h
+        supp = grid.clip(lower=0)
+        feed = grid.clip(upper=0)
 
+        costs_supp = (
+            float((supp.to_numpy() * df["c_sup"].to_numpy())[supp.to_numpy() > 0].sum()) * dt_h
+        )
+        costs_feed = (
+            float((feed.to_numpy() * df["c_feed"].to_numpy())[feed.to_numpy() < 0].sum()) * dt_h
+        )
         costs_all += costs_supp + costs_feed
 
-        bat_to_grid = grid + pv
+        # Battery export estimation (battery to grid = net export beyond PV)
+        bat_to_grid = (grid + pv).to_numpy()
         bat_to_grid = bat_to_grid[bat_to_grid < 0]
-        agg_bat_to_grid += bat_to_grid.sum() * dt_h
-        agg_feed += feed.sum() * dt_h
+        agg_bat_to_grid += float(bat_to_grid.sum()) * dt_h
+        agg_feed += float(feed.sum()) * dt_h
 
-        if isinstance(sizing[sys_id], type_defs.SysParsPVBat):
-            if en_in_bat_ts is None:
-                en_in_bat_ts = df["bat_soc"].values * sizing[sys_id].capacity
-            else:
-                en_in_bat_ts += df["bat_soc"].values * sizing[sys_id].capacity
+        # Battery energy-in-timeseries accumulation
+        if isinstance(sizing.get(sys_id), type_defs.SysParsPVBat) and "bat_soc" in df.columns:
+            cap = float(sizing[sys_id].capacity)
+            contrib = df["bat_soc"].to_numpy() * cap
+            en_in_bat_ts = contrib if en_in_bat_ts is None else (en_in_bat_ts + contrib)
+            combined_cap += cap
+            en_loss += float((df["bat_p_ac"] - df["bat_p_net"]).sum()) * float(sizing[sys_id].dt_h)
 
-            combined_cap += sizing[sys_id].capacity
-
-            en_loss += (df["bat_p_ac"] - df["bat_p_net"]).sum() * sizing[sys_id].dt_h
-
-        charged_energy = 0.0 if en_in_bat_ts is None else en_in_bat_ts[-1] - en_in_bat_ts[0]
-
-    return AgentAnalysisResult(
-        costs_all, en_in_bat_ts, charged_energy, combined_cap, en_loss, agg_feed, agg_bat_to_grid
+    charged_energy = 0.0 if en_in_bat_ts is None else float(en_in_bat_ts[-1] - en_in_bat_ts[0])
+    return pd.Series(
+        {
+            "costs_all": costs_all,
+            "en_in_bat_ts": en_in_bat_ts,
+            "charged_energy": charged_energy,
+            "combined_capacity": combined_cap,
+            "losses_bat": en_loss,
+            "agg_feed": agg_feed,
+            "agg_bat_to_grid": agg_bat_to_grid,
+        }
     )
 
 
-def signal_analysis(run_params: type_defs.RunParameters, raw_output: dict[str, dict]):
-
-    if not run_params.plot:
+def signal_analysis(
+    run_params: type_defs.RunParameters, raw_output: Mapping[str, Dict[str, Any]]
+) -> None:
+    if not getattr(run_params, "plot", False):
         return
 
-    if run_params.coordination_mechanism not in ["admm", "second_order"]:
+    if run_params.coordination_mechanism not in {"admm", "second_order"}:
         print(
             f"No analysis to be made for '{run_params.coordination_mechanism}' coordination mechanism."
         )
@@ -152,104 +189,117 @@ def signal_analysis(run_params: type_defs.RunParameters, raw_output: dict[str, d
         title="Reference power over time", ylabel="Power / kW", figsize=(16, 8)
     )
 
-    for k, signal in list(raw_output.values())[0]["signals"].items():
-        # Show change of signal over simulation horizon for one agent.
-        if not isinstance(signal, sig_types.SecondOrderSignal):
-            print(f"Signal not Second order signal but {type(signal)}")
-            return
+    first = next(iter(raw_output.values()), None)
+    if not first or "signals" not in first:
+        print("No 'signals' in raw_output; skip signal plots.")
+        return
 
-        sig = ax_sig.plot(
-            np.arange(start=k, stop=k + signal.signal_len),
-            signal.mul_lambda,
-            label=f"k = {k}",
-            drawstyle="steps-post",
-        )
+    for k, signal in first["signals"].items():
+        if not isinstance(signal, sig_types.SecondOrderSignal):
+            print(f"Signal not SecondOrderSignal but {type(signal)}")
+            return
+        x = np.arange(start=k, stop=k + signal.signal_len)
+        sig = ax_sig.plot(x, signal.mul_lambda, label=f"k = {k}", drawstyle="steps-post")
         ax_sig.plot(k, signal.mul_lambda[0], marker="s", color=sig[0].get_color(), label=None)
-        ref = ax_ref.plot(
-            np.arange(start=k, stop=k + signal.signal_len),
-            signal.res_power_set,
-            label=f"k = {k}",
-            drawstyle="steps-post",
-        )
+        ref = ax_ref.plot(x, signal.res_power_set, label=f"k = {k}", drawstyle="steps-post")
         ax_ref.plot(k, signal.res_power_set[0], marker="s", color=ref[0].get_color(), label=None)
 
     ax_sig.legend()
     ax_ref.legend()
-
     fig_sig.tight_layout()
     fig_ref.tight_layout()
 
 
-def agent_analysis(agent_ts: dict[str, pd.DataFrame], dt_h: float) -> pd.DataFrame:
-    """
-    KPIs for individual agents
-    - Costs, Profit, Revenue
-    - Consumption (max, total, battery, ev), Feed in (max, total, PV, battery), Self consumption
-    - Charging cycles of battery, battery metrics, violations
-    """
+# ---------------------------------------------------------------------------
+# Per-agent KPI analysis
+# ---------------------------------------------------------------------------
 
-    DOCUMENTED_KPIS = {
-        "grid_demand",  # Total demand from grid (kWh)
-        "energy_consumption",  # Total energy consumption (kWh)
-        "max_grid_demand",  # Maximum demand from grid (kW)
-        "total_feed",  # Total feed in to grid (kWh)
-        "max_feed",  # Maximum feed in to grid (kW)
-        "self-consumption",  # Self consumption (kWh)
-        "self-sufficiency",  # Self-consumtion / (self consumption + total _demand)
-        "charging_cycle_equivalents",  # Charging cycles of battery
-        "battery_energy",  # Battery energy (kWh)
-        "battery_energy_from_grid",  # Battery energy from grid (kWh)
-        "battery_max_from_grid",  # Battery max from grid (kW)
-        "battery_energy_to_grid",  # Battery energy to grid (kWh)
-        "battery_max_to_grid",  # Battery max to grid (kW)
-        "costs",
-        "profit",
-        "revenue",
-        "overcharge_bat",
-        "undercharge_bat",
-        "hp_energy_el",
-        "hp_p_max",
-        "mean_temp",
-        "overheating",
-        "underheating",
-        "above_t",  # temperatures above 23 degrees
-        "under_t",  # temperatures below 18 degrees
-        "ev_energy",
-        "ev_energy_from_grid",
-        "ev_max_from_grid",
-        "ev_energy_to_grid",
-        "overcharge_ev",
-        "undercharge_ev",
-    }
+AGENT_KPI_FIELDS = {
+    "grid_demand",
+    "energy_consumption",
+    "max_grid_demand",
+    "total_feed",
+    "max_feed",
+    "self-consumption",
+    "self-sufficiency",
+    "charging_cycle_equivalents",
+    "battery_energy",
+    "battery_energy_from_grid",
+    "battery_max_from_grid",
+    "battery_energy_to_grid",
+    "battery_max_to_grid",
+    "costs",
+    "profit",
+    "revenue",
+    "overcharge_bat",
+    "undercharge_bat",
+    "hp_energy_el",
+    "hp_p_max",
+    "mean_temp",
+    "overheating",
+    "underheating",
+    "above_t",
+    "under_t",
+    "ev_energy",
+    "ev_energy_from_grid",
+    "ev_max_from_grid",
+    "ev_energy_to_grid",
+    "overcharge_ev",
+    "undercharge_ev",
+}
 
-    energy_map = {
-        "hp": "hp_energy_el",
-        "ev": "ev_energy",
-    }
-    agents_res = pd.DataFrame(index=agent_ts.keys(), columns=list(DOCUMENTED_KPIS))
+
+def _cycles_from_soc(soc: np.ndarray) -> float:
+    """Return charging-throughput in *equivalent full cycles on SoC basis*.
+
+    This equals sum of positive SoC increments. If SoC is in [0,1], this is EFC.
+    """
+    if soc.size < 2:
+        return 0.0
+    diff = np.diff(soc)
+    return float(diff[diff > 0].sum())
+
+
+def agent_analysis(
+    agent_ts: Mapping[str, DataFrame], dt_h: float
+) -> Tuple[DataFrame, Dict[str, Series]]:
+    """Compute KPIs for each agent.
+
+    Definitions / Notes
+    -------------------
+    - All energy metrics integrate power with `dt_h` to kWh.
+    - `total_feed` is export energy to grid (kWh, positive magnitude).
+    - `max_feed` is the maximum export power magnitude (kW, positive value).
+    - EV energy is integrated from `ev_p_net` (kW), not from SoC.
+    - Self-consumption is PV generation used on-site: PV_gen - feed_to_grid, bounded below by 0.
+    - Profit = revenue - costs, where revenue is positive cash inflow from exports.
+    """
+    energy_map = {"hp": "hp_energy_el", "ev": "ev_energy"}
+    agents_res = pd.DataFrame(
+        index=list(agent_ts.keys()), columns=sorted(AGENT_KPI_FIELDS), dtype=float
+    )
 
     for ag, df in agent_ts.items():
-        systems = []
-        res = {k: np.nan for k in DOCUMENTED_KPIS}
+        res: Dict[str, float] = {k: np.nan for k in AGENT_KPI_FIELDS}
 
         # Basic consumption/cost metrics
         grid = df["grid"].to_numpy()
-        c_sup = df["c_sup"].to_numpy()
-        c_feed = df["c_feed"].to_numpy()
+        c_sup = df["c_sup"].to_numpy() if "c_sup" in df.columns else np.zeros_like(grid)
+        c_feed = df["c_feed"].to_numpy() if "c_feed" in df.columns else np.zeros_like(grid)
 
         demand_mask = grid >= 0
         feed_mask = grid < 0
 
         res.update(
             {
-                "grid_demand": (grid[demand_mask] * dt_h).sum(),
-                "max_grid_demand": grid[demand_mask].max(),
-                "costs": (grid[demand_mask] * c_sup[demand_mask]).sum(),
+                "grid_demand": _masked_sum(grid, demand_mask, dt_h),
+                "max_grid_demand": _safe_max(grid[demand_mask]) if demand_mask.any() else 0.0,
+                "costs": _masked_sum(grid * c_sup, demand_mask, dt_h),
             }
         )
 
         # Battery metrics
-        if "bat_soc" in df.columns:
+        if {"bat_soc", "bat_p_ac", "bat_p_net"}.issubset(df.columns):
             bat_soc = df["bat_soc"].to_numpy()
             bat_p_ac = df["bat_p_ac"].to_numpy()
             bat_p_net = df["bat_p_net"].to_numpy()
@@ -258,65 +308,48 @@ def agent_analysis(agent_ts: dict[str, pd.DataFrame], dt_h: float) -> pd.DataFra
             grid_charge_mask = (bat_p_net > 0) & (grid > 0)
             grid_discharge_mask = (bat_p_ac < 0) & (grid < 0)
 
-            try:
-                battery_max_from_grid = bat_p_ac[grid_charge_mask].max()
-            except ValueError:
-                battery_max_from_grid = np.nan
-
-            try:
-                battery_max_to_grid = bat_p_ac[grid_discharge_mask].min()
-            except ValueError:
-                battery_max_to_grid = np.nan
-
-            battery_energy = bat_p_net[charge_mask].sum() * dt_h
-
             res.update(
                 {
-                    "battery_energy": battery_energy,
-                    "battery_energy_from_grid": bat_p_ac[grid_charge_mask].sum() * dt_h,
-                    "battery_max_from_grid": battery_max_from_grid,
-                    "battery_energy_to_grid": bat_p_ac[grid_discharge_mask].sum() * dt_h,
-                    "battery_max_to_grid": battery_max_to_grid,
-                    "overcharge_bat": int(np.count_nonzero(bat_soc > 1)),
-                    "undercharge_bat": int(np.count_nonzero(bat_soc < 0)),
-                    "charging_cycle_equivalents": calculate_ccs(bat_soc),
+                    "battery_energy": _masked_sum(bat_p_net, charge_mask, dt_h),
+                    "battery_energy_from_grid": _masked_sum(bat_p_ac, grid_charge_mask, dt_h),
+                    "battery_max_from_grid": (
+                        _safe_max(bat_p_ac[grid_charge_mask]) if grid_charge_mask.any() else np.nan
+                    ),
+                    "battery_energy_to_grid": _masked_sum(bat_p_ac, grid_discharge_mask, dt_h),
+                    "battery_max_to_grid": (
+                        _safe_min(bat_p_ac[grid_discharge_mask])
+                        if grid_discharge_mask.any()
+                        else np.nan
+                    ),
+                    "overcharge_bat": float((bat_soc > 1).sum()),
+                    "undercharge_bat": float((bat_soc < 0).sum()),
+                    "charging_cycle_equivalents": _cycles_from_soc(bat_soc),
                 }
             )
 
-        # HP metrics
-        #'hp_temp', 'hp_losses', 'hp_p_in', 'hp_q_hp', 'hp_u_ext'
-        if "hp_temp" in df.columns:
-            systems.append("hp")
+        # Heat pump metrics
+        if {"hp_temp", "hp_p_in"}.issubset(df.columns):
             hp_temp = df["hp_temp"].to_numpy()
             hp_p_in = df["hp_p_in"].to_numpy()
-
             hp_mask = hp_p_in > 0
-            upper_temp_mask = hp_temp > 23
-            lower_temp_mask = hp_temp < 18
+            upper_mask = hp_temp > 23
+            lower_mask = hp_temp < 18
 
-            try:
-                hp_p_max = hp_p_in[hp_mask].max()
-            except ValueError:
-                hp_p_max = np.nan
             res.update(
                 {
-                    "mean_temp": hp_temp.mean(),
-                    "hp_energy_el": hp_p_in[hp_mask].sum() * dt_h,
-                    # only relevant if HP has variable power input:
-                    "hp_p_max": hp_p_max,
-                    "overheating": int(np.count_nonzero(upper_temp_mask)),
-                    "underheating": int(np.count_nonzero(lower_temp_mask)),
-                    "above_t": len(hp_temp[upper_temp_mask]),
-                    "under_t": len(hp_temp[lower_temp_mask]),
+                    "mean_temp": float(hp_temp.mean()) if hp_temp.size else np.nan,
+                    "hp_energy_el": _masked_sum(hp_p_in, hp_mask, dt_h),
+                    "hp_p_max": _safe_max(hp_p_in[hp_mask]) if hp_mask.any() else np.nan,
+                    "overheating": float(upper_mask.sum()),
+                    "underheating": float(lower_mask.sum()),
+                    "above_t": float(upper_mask.sum()),
+                    "under_t": float(lower_mask.sum()),
                 }
             )
 
         # EV metrics
-        #'ev_soc', 'ev_p_ac', 'ev_p_net'
-        if "ev_soc" in df.columns:
-            systems.append("ev")
+        if {"ev_soc", "ev_p_ac", "ev_p_net"}.issubset(df.columns):
             ev_soc = df["ev_soc"].to_numpy()
-            # Replace this with your actual CPS function if defined
             ev_p_ac = df["ev_p_ac"].to_numpy()
             ev_p_net = df["ev_p_net"].to_numpy()
 
@@ -324,133 +357,186 @@ def agent_analysis(agent_ts: dict[str, pd.DataFrame], dt_h: float) -> pd.DataFra
             grid_charge_mask_ev = (ev_p_net > 0) & (grid > 0)
             grid_discharge_mask_ev = (ev_p_ac < 0) & (grid < 0)
 
-            try:
-                ev_max_from_grid = ev_p_ac[grid_charge_mask_ev].max()
-            except ValueError:
-                ev_max_from_grid = np.nan
-
             res.update(
                 {
-                    "ev_energy": ev_soc[charge_mask_ev].sum() * dt_h,
-                    "ev_energy_from_grid": ev_p_ac[grid_charge_mask_ev].sum() * dt_h,
-                    "ev_max_from_grid": ev_max_from_grid,
-                    # "ev_energy_to_grid": ev_p_ac[grid_discharge_mask_ev].sum() * dt_h,
-                    "overcharge_ev": int(np.count_nonzero(ev_soc > 1)),
-                    "undercharge_ev": int(np.count_nonzero(ev_soc < 0)),
+                    "ev_energy": _masked_sum(ev_p_net, charge_mask_ev, dt_h),
+                    "ev_energy_from_grid": _masked_sum(ev_p_ac, grid_charge_mask_ev, dt_h),
+                    "ev_max_from_grid": (
+                        _safe_max(ev_p_ac[grid_charge_mask_ev])
+                        if grid_charge_mask_ev.any()
+                        else np.nan
+                    ),
+                    "ev_energy_to_grid": _masked_sum(ev_p_ac, grid_discharge_mask_ev, dt_h),
+                    "overcharge_ev": float((ev_soc > 1).sum()),
+                    "undercharge_ev": float((ev_soc < 0).sum()),
                 }
             )
-        # Overall energy demand w/o battery
-        total_demand = (sum(res[energy_map[k]] for k in systems) + df["p_el_load"]).sum() * dt_h
-        res["energy_consumption"] = total_demand
 
-        # PV metrics
+        # Overall energy demand sans battery netting
+        p_el_load = df["p_el_load"].to_numpy() if "p_el_load" in df.columns else np.zeros_like(grid)
+        systems = [
+            k for k in ("hp", "ev") if (energy_map[k] in res and not np.isnan(res[energy_map[k]]))
+        ]
+        total_demand_kwh = sum(res[energy_map[k]] for k in systems) + float(p_el_load.sum()) * dt_h
+        res["energy_consumption"] = total_demand_kwh
+
+        # PV + self-consumption + revenue/profit
         if "p_el_pv" in df.columns:
             pv = df["p_el_pv"].to_numpy()
-            revenue = (grid[feed_mask] * c_feed[feed_mask]).sum()
-            self_consumption = (
-                pv.sum() + grid[feed_mask].sum()
-            ) * dt_h  # feed in at grid is negative, hence +
-            try:
-                max_feed = grid[feed_mask].min()
-            except ValueError:
-                max_feed = np.nan
+            # Export energy magnitude (kWh, positive):
+            export_kwh = _masked_sum(
+                -grid, feed_mask, dt_h
+            )  # -grid turns negative export power into positive magnitude
+            pv_gen_kwh = float(pv[pv > 0].sum()) * dt_h
+            self_consumption_kwh = max(0.0, pv_gen_kwh - export_kwh)
+
+            max_feed_kw = abs(_safe_min(grid[feed_mask])) if feed_mask.any() else np.nan
+
+            # Revenue: cash inflow from export; assume feed-in price is positive in `c_feed`
+            revenue = _masked_sum((-grid) * c_feed, feed_mask, dt_h)
+
             res.update(
                 {
-                    "total_feed": grid[feed_mask].sum(),
-                    "max_feed": max_feed,
+                    "total_feed": export_kwh,
+                    "max_feed": max_feed_kw,
                     "revenue": revenue,
-                    "self-consumption": self_consumption,
+                    "self-consumption": self_consumption_kwh,
+                    "self-sufficiency": (
+                        (self_consumption_kwh / total_demand_kwh)
+                        if total_demand_kwh > 0
+                        else np.nan
+                    ),
                 }
             )
-            # Self sufficiency
-            if total_demand > 0:
-                res["self-sufficiency"] = self_consumption / total_demand
-            else:
-                res["self-sufficiency"] = np.nan
 
         # Profit calculation
-        res["profit"] = abs(res["revenue"]) - res["costs"]
-        agents_res.loc[ag] = res
+        if not np.isnan(res.get("revenue", np.nan)) and not np.isnan(res.get("costs", np.nan)):
+            res["profit"] = res.get("revenue", 0.0) - res.get("costs", 0.0)
 
-    agent_stats = {
-        "mean": agents_res.astype(float).mean(),
-        "median": agents_res.astype(float).median(),
-        "25_quantile": agents_res.astype(float).quantile(0.25),
-        "75_quantile": agents_res.astype(float).quantile(0.75),
-        "max": agents_res.astype(float).max(),
-        "min": agents_res.astype(float).min(),
+        agents_res.loc[ag] = pd.Series(res, dtype=float)
+
+    # Aggregate statistics
+    numeric_agents = agents_res.astype(float)
+    agent_stats: Dict[str, Series] = {
+        "mean": numeric_agents.mean(numeric_only=True),
+        "median": numeric_agents.median(numeric_only=True),
+        "25_quantile": numeric_agents.quantile(0.25, numeric_only=True),
+        "75_quantile": numeric_agents.quantile(0.75, numeric_only=True),
+        "max": numeric_agents.max(numeric_only=True),
+        "min": numeric_agents.min(numeric_only=True),
     }
 
     return agents_res, agent_stats
 
 
-def calculate_ccs(soc: np.ndarray) -> int:
-    count = 0
-    diff = np.diff(soc)
-    charging = diff[diff > 0].sum()  # consider only charging phases
+# ---------------------------------------------------------------------------
+# Battery cycles (public API maintained for backwards compatibility)
+# ---------------------------------------------------------------------------
 
 
-# ================== Write results to file =============================
+def calculate_ccs(soc: np.ndarray) -> float:
+    """Compatibility shim: return equivalent full cycles based on SoC increments.
+
+    Formerly returned "charging energy only". Now returns sum of positive SoC
+    deltas which equals EFC if SoC is normalized [0,1].
+    """
+    return _cycles_from_soc(soc)
+
+
+# ---------------------------------------------------------------------------
+# Persistence helpers
+# ---------------------------------------------------------------------------
 
 
 def _write_to_files(
     run_params: type_defs.RunParameters,
-    eval_res: dict[str, Any],
+    eval_res: Union[Mapping[str, Any], pd.Series, pd.DataFrame],
     file_name: str = "kpis",
-):
+) -> None:
+    """Persist evaluation results to CSV in `run_params.output_file_dir`.
 
-    # Abbreviate
-    out_dir = run_params.output_file_dir
+    - If `eval_res` is a DataFrame, append/union columns and write.
+    - If `eval_res` is a Series, convert to one-row DataFrame.
+    - If it's a mapping, convert to one-row DataFrame (index = tag if present).
+    - If it's a dict of Series, we use `DataFrame.from_dict(..., orient='index')`.
+    """
+    out_dir: pathlib.Path = run_params.output_file_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # check that output directory extists
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir, exist_ok=True)
-
-    # Handle flat dict: one row
-    if all(not isinstance(v, pd.Series) for v in eval_res.values()):
-        eval_df = pd.DataFrame(
-            {tag: [eval_res[tag]] for tag in eval_res}, index=[run_params.sim_tag]
-        )
-    # Handle nested dict: multiple rows
+    # Build DataFrame to append
+    if isinstance(eval_res, pd.DataFrame):
+        eval_df = eval_res
+    elif isinstance(eval_res, pd.Series):
+        eval_df = eval_res.to_frame().T
+    elif isinstance(eval_res, Mapping) and all(
+        not isinstance(v, pd.Series) for v in eval_res.values()
+    ):
+        eval_df = pd.DataFrame([dict(eval_res)])
     else:
         eval_df = pd.DataFrame.from_dict(eval_res, orient="index")
 
-    file_name = file_name + ".csv"
-    eval_file_path = out_dir / file_name
-    if os.path.exists(eval_file_path):
-        eval_df = pd.concat([pd.read_csv(eval_file_path, index_col="tag"), eval_df])
+    eval_file_path = out_dir / f"{file_name}.csv"
+    if eval_file_path.exists():
+        try:
+            existing = pd.read_csv(eval_file_path, index_col=0)
+            combined = pd.concat([existing, eval_df], axis=0, sort=False)
+            eval_df = combined
+        except Exception:
+            pass
 
     eval_df.to_csv(eval_file_path)
 
 
-def evaluate_sim(sim_result: results.SimulationResult):
-    # Evaluate Simulation Results ==========================================
-    eval_res = _get_aggregated_ts_result(sim_result)
-    eval_res["tag"] = sim_result.run_params.sim_tag
+# ---------------------------------------------------------------------------
+# Main evaluation entrypoint
+# ---------------------------------------------------------------------------
 
-    eval_res.update(
-        dataclasses.asdict(flex_analysis(sim_result.agents_ts, sim_result.sizing, eval_res["dt_h"]))
+
+def evaluate_sim(sim_result: results.SimulationResult) -> Dict[str, Any]:
+    """Evaluate a simulation result and persist KPIs.
+
+    Returns a dict with keys: "general_res", "agent_res", "agent_stats".
+    """
+    # Aggregated KPIs (Series)
+    agg_series = _get_aggregated_ts_result(sim_result)
+
+    # Flex analysis (Series)
+    flex_series = flex_analysis(sim_result.agents_ts, sim_result.sizing, float(agg_series["dt_h"]))  # type: ignore[arg-type]
+
+    # Compose one evaluation row
+    eval_row = pd.concat(
+        [
+            agg_series,
+            flex_series.drop(labels=["en_in_bat_ts"], errors="ignore"),
+            pd.Series(
+                {
+                    "tag": sim_result.run_params.sim_tag,
+                    "calc_time": sim_result.exec_time,
+                }
+            ),
+        ]
     )
-    eval_res.pop("en_in_bat_ts")
 
-    # eval_res.update(agent_analysis(sim_result.agents_ts, eval_res["dt_h"]))
+    eval_df = eval_row.to_frame().T
+    eval_df.index = [sim_result.run_params.sim_tag]
+    eval_df.index.name = "tag"
 
-    eval_res["calc_time"] = sim_result.exec_time
-    agent_kpis, agent_stats = agent_analysis(sim_result.agents_ts, eval_res["dt_h"])
+    # Per-agent analysis
+    agent_kpis, agent_stats = agent_analysis(sim_result.agents_ts, float(agg_series["dt_h"]))  # type: ignore[arg-type]
 
-    print(f"Analysis result for sim {sim_result.run_params.sim_tag}: {pd.Series(eval_res)}")
-    _write_to_files(sim_result.run_params, eval_res, "kpis")
+    # Logging to console (compact)
+    print(f"Analysis result for sim {sim_result.run_params.sim_tag}: {eval_row}")
+    _write_to_files(sim_result.run_params, eval_df, "kpis")
 
-    for key in agent_stats:
-        pd.concat([agent_stats[key], pd.Series(sim_result.run_params.sim_tag, index=["tag"])])
+    # Persist agent statistics with the tag row
+    stats_with_tag: Dict[str, Series] = {}
+    for key, ser in agent_stats.items():
+        ser = ser.copy()
+        ser.loc["tag"] = sim_result.run_params.sim_tag
+        stats_with_tag[key] = ser
     print(
         f"Mean agent analysis result for sim {sim_result.run_params.sim_tag}: {agent_stats['mean']}"
     )
-    _write_to_files(sim_result.run_params, agent_stats, "agent_stats")
+    _write_to_files(sim_result.run_params, stats_with_tag, "agent_stats")
 
-    # Reactivate if needed. However, sim_result must get a signals field
-    # signal_analysis(sim_result.run_params, sim_result.agents_ts)
-
-    res = {"general_res": eval_res, "agent_res": agent_kpis, "agent_stats": agent_stats}
-
-    return res
+    return {"general_res": eval_row, "agent_res": agent_kpis, "agent_stats": agent_stats}
