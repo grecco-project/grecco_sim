@@ -28,12 +28,12 @@ class SimulationSetup(object):
         :param run_parameters: Parameters specifying configuration of the simulation run
 
         """
-        self.run_params = run_parameters
+        self.run_pars = run_parameters
 
         self.time_index = pd.date_range(
-            start=self.run_params.start_time,
-            freq=self.run_params.dt,
-            periods=self.run_params.sim_horizon,
+            start=self.run_pars.start_time,
+            freq=self.run_pars.dt,
+            periods=self.run_pars.sim_horizon,
         )
         self.sys_ids = []
 
@@ -47,29 +47,29 @@ class SimulationSetup(object):
         :return:
         """
 
-        if self.run_params.scenario["name"] == "sample_scenario":
-            dl = sim_input.SampleInputDataLoader(self.time_index, self.run_params.scenario)
-        elif self.run_params.scenario["name"] == "dummy_data":
-            dl = sim_input.DummyInputDataLoader(self.time_index, self.run_params.scenario)
-        elif "opfingen" in self.run_params.scenario["name"]:
+        if self.run_pars.scenario["name"] == "sample_scenario":
+            dl = sim_input.SampleInputDataLoader(self.time_index, self.run_pars.scenario)
+        elif self.run_pars.scenario["name"] == "dummy_data":
+            dl = sim_input.DummyInputDataLoader(self.time_index, self.run_pars.scenario)
+        elif "opfingen" in self.run_pars.scenario["name"]:
             dl = sim_input.PyPsaGridInputLoader(
-                self.time_index, self.run_params.scenario, self.run_params.dt
+                self.time_index, self.run_pars.scenario, self.run_pars.dt
             )
         else:
-            raise ValueError(f"Scenario name {self.run_params.scenario['name']} not known.")
+            raise ValueError(f"Scenario name {self.run_pars.scenario['name']} not known.")
 
         self.sys_ids = dl.get_sys_ids()
 
         model_input = {
             sys_id: dict(
                 params=dl.get_parameters(sys_id),
-                ts=dl.get_input_data(sys_id, self.run_params.scenario),
+                ts=dl.get_input_data(sys_id, self.run_pars.scenario),
             )
             for sys_id in self.sys_ids
         }
 
         return [
-            grid_node.GridNode(sys_id, self.run_params, model_input[sys_id], opt_pars)
+            grid_node.GridNode(sys_id, self.run_pars, model_input[sys_id], opt_pars)
             for sys_id in self.sys_ids
         ]
 
@@ -90,7 +90,7 @@ class SimulationSetup(object):
         :return: the coordinator
         """
 
-        coordination_mechanism = self.run_params.coordination_mechanism
+        coordination_mechanism = self.run_pars.coordination_mechanism
 
         for cm in coordinators.AVAILABLE_COORDINATORS:
             if cm.name == coordination_mechanism:
@@ -143,13 +143,13 @@ class SimulationSetup(object):
         coordinator = self._get_central_coordinator(opt_pars, grid_pars)
 
         # Make simulation ======================================================
-        sim_manager = simulator.Simulator(grid_nodes, coordinator, self.run_params, self.time_index)
+        sim_manager = simulator.Simulator(grid_nodes, coordinator, self.run_pars, self.time_index)
         sim_manager.run_sim()
 
         sim_result = sim_manager.get_sim_result(opt_pars, grid_pars)
 
         # Write sim results to disc
-        sim_result.record()
+        sim_result.export_to_files()
 
         # Evaluate simulation.
         eval_results = simulation_eval.evaluate_sim(sim_result)
@@ -158,7 +158,7 @@ class SimulationSetup(object):
         plotter.make_plots(sim_result)
         plotter.make_agent_plots(
             eval_results["agent_res"],
-            sim_result.run_params,
+            sim_result.run_pars,
             "all")
 
         return eval_results

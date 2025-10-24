@@ -52,7 +52,7 @@ def _run_single_sim(
     except Exception:
         if not os.path.exists(run_parameters.output_file_dir):
             os.makedirs(run_parameters.output_file_dir, exist_ok=True)
-        data_io.dump_parameterization(
+        data_io.custom_json_dump(
             run_parameters.output_file_dir / "run_pars.json", [run_parameters, opt_pars, grid_pars]
         )
         with open(run_parameters.output_file_dir / "error.csv", "w", encoding="utf-8") as err_file:

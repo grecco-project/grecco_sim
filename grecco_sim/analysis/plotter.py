@@ -26,51 +26,51 @@ def make_plots(
     sim_result: results.SimulationResult,
 ):
     """Make plots for visual analysis."""
-    if not sim_result.run_params.plot:
+    if not sim_result.run_pars.plot:
         # Nothing to do
         return
 
     meta_inf = PlottingMetaInf(
         sys_ids=list(sim_result.ts_grid.columns.values),
         n_agents=len(sim_result.ts_grid.columns),
-        sim_tag=sim_result.run_params.sim_tag,
+        sim_tag=sim_result.run_pars.sim_tag,
     )
-    os.makedirs(sim_result.run_params.output_file_dir / "plots", exist_ok=True)
+    os.makedirs(sim_result.run_pars.output_file_dir / "plots", exist_ok=True)
     # Plot grid everytime
-    _plot_grid(sim_result.ts_grid, meta_inf, sim_result.run_params)
+    _plot_grid(sim_result.ts_grid, meta_inf, sim_result.run_pars)
 
     if True:
         # Plot these 'analysis' plots only when showing
         if (
-            sim_result.run_params.scenario["bat"] == True
-            or sim_result.run_params.scenario["ev"] == True
+            sim_result.run_pars.scenario["bat"] == True
+            or sim_result.run_pars.scenario["ev"] == True
         ):
-            _plot_batteries(sim_result.flex_ts, meta_inf, sim_result.run_params)
-            _plot_soc(sim_result.agents_ts, meta_inf, sim_result.run_params)
-        if sim_result.run_params.scenario["hp"] == True:
+            _plot_batteries(sim_result.flex_ts, meta_inf, sim_result.run_pars)
+            _plot_soc(sim_result.agents_ts, meta_inf, sim_result.run_pars)
+        if sim_result.run_pars.scenario["hp"] == True:
             _plot_hps(
                 sim_result.flex_ts,
                 sim_result.agents_ts,
                 sim_result.assigned_grid_fees,
                 meta_inf,
-                sim_result.run_params,
+                sim_result.run_pars,
             )
-        if sim_result.run_params.coordination_mechanism != "local_self_suff":
+        if sim_result.run_pars.coordination_mechanism != "local_self_suff":
             _plot_signals(sim_result.assigned_grid_fees, meta_inf)
         _plot_flex_nodes(
             sim_result.agents_ts,
             sim_result.flex_ts,
             sim_result.assigned_grid_fees,
             meta_inf,
-            sim_result.run_params,
+            sim_result.run_pars,
         )
-    if sim_result.run_params.plot:
+    if sim_result.run_pars.plot:
         # plt.show()
         pass
 
 
 def _plot_grid(
-    ts_grid: pd.DataFrame, meta_inf: PlottingMetaInf, run_params: type_defs.RunParameters
+    ts_grid: pd.DataFrame, meta_inf: PlottingMetaInf, run_pars: type_defs.RunParameters
 ):
     """Plot the grid time series with combined and individual agents."""
     fig, ax = style.styled_plot(
@@ -116,12 +116,12 @@ def _plot_grid(
     )
 
     # ax.legend(title=meta_inf.sim_tag)
-    ax.legend(title=run_params.sim_tag)
+    ax.legend(title=run_pars.sim_tag)
     ax.y_lim = (grid_min * 1.1, grid_max * 1.1)
     ax.grid()
     fig.tight_layout()
-    fig.savefig(run_params.output_file_dir / f"plot_grid_{run_params.sim_tag}.pdf")
-    fig.savefig(run_params.output_file_dir / "plots" / "Trafo_Load.png")
+    fig.savefig(run_pars.output_file_dir / f"plot_grid_{run_pars.sim_tag}.pdf")
+    fig.savefig(run_pars.output_file_dir / "plots" / "Trafo_Load.png")
 
 
 def _plot_hps(
@@ -129,7 +129,7 @@ def _plot_hps(
     agents_ts: dict[str, pd.DataFrame],
     ts_signals: pd.DataFrame,
     meta_inf: PlottingMetaInf,
-    run_params: type_defs.RunParameters,
+    run_pars: type_defs.RunParameters,
 ):
 
     fig, ax = style.styled_plot(
@@ -162,7 +162,7 @@ def _plot_hps(
 
     ax.legend()
     fig.tight_layout()
-    fig.savefig(run_params.output_file_dir / "plots" / "hp_p.png")
+    fig.savefig(run_pars.output_file_dir / "plots" / "hp_p.png")
 
     fig_temp, ax_temp = style.styled_plot(
         xlabel="Time", ylabel="Temperature / C", figsize=(8, 6), title="Heat Pump Temperatures"
@@ -172,11 +172,11 @@ def _plot_hps(
             ax_temp.plot(ts_ag["hp_temp"], label=ag_name, drawstyle="steps-post")
     fig_temp.legend(loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.05))
     fig_temp.tight_layout(rect=[0, 0.1, 1, 1])
-    fig_temp.savefig(run_params.output_file_dir / "plots" / "temperature.png")
+    fig_temp.savefig(run_pars.output_file_dir / "plots" / "temperature.png")
 
 
 def _plot_batteries(
-    ts_bat: pd.DataFrame, meta_inf: PlottingMetaInf, run_params: type_defs.RunParameters
+    ts_bat: pd.DataFrame, meta_inf: PlottingMetaInf, run_pars: type_defs.RunParameters
 ):
 
     fig, ax = style.styled_plot(
@@ -201,7 +201,7 @@ def _plot_batteries(
 
     fig.legend(loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.05))
     fig.tight_layout()
-    fig.savefig(run_params.output_file_dir / "plots" / "Bat_EV_p.png")
+    fig.savefig(run_pars.output_file_dir / "plots" / "Bat_EV_p.png")
 
 
 def _plot_signals(ts_signals: pd.DataFrame, meta_inf: PlottingMetaInf):
@@ -236,7 +236,7 @@ def _plot_signals(ts_signals: pd.DataFrame, meta_inf: PlottingMetaInf):
 def _plot_soc(
     ts_agents: dict[str, pd.DataFrame],
     meta_inf: PlottingMetaInf,
-    run_params: type_defs.RunParameters,
+    run_pars: type_defs.RunParameters,
 ):
     fig, ax = style.styled_plot(
         xlabel="Time", ylabel="SoC", figsize="landscape", title="SoC of Storages/EVs"
@@ -261,7 +261,7 @@ def _plot_soc(
             )
     ax.legend(bbox_to_anchor=(0.5, -0.1), loc="upper left", ncols=3)
     fig.tight_layout()
-    fig.savefig(run_params.output_file_dir / "plots" / "Bat_EV_soc.png")
+    fig.savefig(run_pars.output_file_dir / "plots" / "Bat_EV_soc.png")
 
 
 def _plot_flex_nodes(
@@ -269,7 +269,7 @@ def _plot_flex_nodes(
     ts_flex: pd.DataFrame,
     ts_signals: pd.DataFrame,
     meta_inf: PlottingMetaInf,
-    run_params: type_defs.RunParameters,
+    run_pars: type_defs.RunParameters,
 ):
     fig, ax = style.styled_plot(
         xlabel="Time", ylabel="Power in kW", figsize="landscape", title="Nodes with Flexibility"
@@ -321,12 +321,12 @@ def _plot_flex_nodes(
         )
 
     fig.tight_layout()
-    fig.savefig(run_params.output_file_dir / "plots" / "Flex.png")
+    fig.savefig(run_pars.output_file_dir / "plots" / "Flex.png")
 
 
-def make_agent_plots(kpis_ag: pd.DataFrame, run_params: results.SimulationResult, agents="all"):
+def make_agent_plots(kpis_ag: pd.DataFrame, run_pars: results.SimulationResult, agents="all"):
     """Make plots from agent evaluation."""
-    if not run_params.plot:
+    if not run_pars.plot:
         return
     agents_opt = {
         "flex": kpis_ag[
@@ -335,7 +335,7 @@ def make_agent_plots(kpis_ag: pd.DataFrame, run_params: results.SimulationResult
         "all": kpis_ag.index.tolist(),
     }
 
-    _make_general_plot(kpis_ag, agents_opt[agents], run_params)
+    _make_general_plot(kpis_ag, agents_opt[agents], run_pars)
     _make_economics_plot(kpis_ag, agents_opt[agents])
     _make_pv_plot(kpis_ag, agents_opt[agents])
     _make_battery_plot(kpis_ag, agents_opt[agents])
@@ -344,7 +344,7 @@ def make_agent_plots(kpis_ag: pd.DataFrame, run_params: results.SimulationResult
     plt.show()
 
 
-def _make_general_plot(df: pd.DataFrame, agents: List[str], run_params: type_defs.RunParameters):
+def _make_general_plot(df: pd.DataFrame, agents: List[str], run_pars: type_defs.RunParameters):
     """Make general plots for agents."""
     fig, axs = plt.subplots(1, 2, figsize=(10, 6))
     fig.suptitle("General KPIs of Agents")
@@ -358,7 +358,7 @@ def _make_general_plot(df: pd.DataFrame, agents: List[str], run_params: type_def
     axs[1].set_title("Peak Demand")
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(run_params.output_file_dir / "plots" / "Agents_P_E.png")
+    fig.savefig(run_pars.output_file_dir / "plots" / "Agents_P_E.png")
 
 
 def _make_economics_plot(df: pd.DataFrame, agents: List[str]):

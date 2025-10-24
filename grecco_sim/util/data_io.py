@@ -127,31 +127,37 @@ def unpickle(filename: str) -> Any:
         return pickle.load(out_file)
 
 
-def dump_parameterization(out_file_name: Path, parameters):
+def custom_json_dump(out_file_name: Path, parameters):
     """Write a json file of parameter classes"""
     with open(out_file_name, "w") as out_file:
         json.dump(parameters, out_file, cls=type_defs.EnhancedJSONEncoder)
 
 
-def load_sizing(in_file_name: Path) -> dict[str, dict[str, type_defs.SysPars]]:
-    """Read sizing json from file and create SysPars objects from it."""
-    with open(in_file_name) as sizing_file:
-        raw_sizing = json.load(sizing_file)
+def load_system_parameters(p: Path) -> dict[str, dict[str, type_defs.SysPars]]:
+    """ Read unit parameters from json as dicts and create SysPars objects."""
 
-    SIZING_CLASS = {
+    with open(p) as f:
+        parameters = json.load(f)
+
+    unit_classes = {
         "hp": type_defs.SysParsHeatPump,
         "load": type_defs.SysParsLoad,
         "bat": type_defs.SysParsPVBat,
         "pv": type_defs.SysParsPV,
         "ev": type_defs.SysParsEV,
     }
-    return {
-        sys_id: {
-            subsys: SIZING_CLASS[raw_dict[subsys]["_system"]](**raw_dict[subsys])
-            for subsys in raw_dict
-        }
-        for sys_id, raw_dict in raw_sizing.items()
-    }
+
+    system_parameters = dict()
+
+    for sys_id, loaded_sys_dict in parameters.items():
+
+        system_parameters[sys_id] = dict()
+
+        for unit_id, unit_params in loaded_sys_dict.items():
+            unit_class = unit_classes[unit_id]
+            system_parameters[sys_id][unit_id] = unit_class[unit_params]
+
+    return system_parameters
 
 
 def convert_to_unix(idx: pd.Index, assume_tz="UTC"):

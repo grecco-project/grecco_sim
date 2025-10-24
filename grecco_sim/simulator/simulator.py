@@ -22,22 +22,22 @@ class Simulator(object):
         self,
         grid_nodes: list[grid_node.GridNode],
         coordinator: coord_interface.CoordinatorInterface,
-        run_params: RunParameters,
+        run_pars: RunParameters,
         time_index: pd.DatetimeIndex,
         grid: Union[grid.Grid, None] = None,
     ):
 
-        self.horizon = run_params.sim_horizon
-        self.run_params = run_params
+        self.horizon = run_pars.sim_horizon
+        self.run_pars = run_pars
 
         self.grid_nodes = grid_nodes
         self.coordinator = coordinator
         self.time_index = time_index
-        self.ts = pd.DataFrame(index=self.time_index, columns=["iterations"])
+        self.signal_ts = pd.DataFrame(index=self.time_index, columns=["iterations"])
         self.grid = grid
 
-        self.max_market_iterations = run_params.max_market_iterations
-        self.inspection_times = run_params.inspection if run_params.inspection is not None else []
+        self.max_market_iterations = run_pars.max_market_iterations
+        self.inspection_times = run_pars.inspection if run_pars.inspection is not None else []
         self.execution_time = 0.0
         self.multiprocess = False
 
@@ -46,12 +46,12 @@ class Simulator(object):
         Use unpickle_debugging.py to inspect and make custom market clearing.
         """
 
-        os.makedirs(self.run_params.output_file_dir, exist_ok=True)
+        os.makedirs(self.run_pars.output_file_dir, exist_ok=True)
 
         obj = (self.grid_nodes, self.coordinator, k)
 
         with open(
-            self.run_params.output_file_dir / f"coordination_state_at_k_{k}.pkl", "wb"
+                self.run_pars.output_file_dir / f"coordination_state_at_k_{k}.pkl", "wb"
         ) as pickle_file:
             pickle.dump(obj, pickle_file)
 
@@ -101,7 +101,7 @@ class Simulator(object):
             print(
                 f"For {self.coordinator.coord_name} at k={k} needed {market_iterations} market iterations"
             )
-        self.ts.loc[self.time_index[k], "iterations"] = market_iterations
+        self.signal_ts.loc[self.time_index[k], "iterations"] = market_iterations
 
         return initial_futures, signals
 
@@ -135,7 +135,7 @@ class Simulator(object):
 
             rew = self.coordinator.get_cost_realization(initial_futures, realized_future, signals)
             # TODO this line entails a high computation time for pandas indexing. -> rewrite using numpy
-            self.ts.loc[self.time_index[k], list(rew.keys())] = list(rew.values())
+            self.signal_ts.loc[self.time_index[k], list(rew.keys())] = list(rew.values())
 
             # TODO here we would need the grid simulation of that time step
             if self.grid is not None:
@@ -148,16 +148,19 @@ class Simulator(object):
         self, opt_pars: type_defs.OptParameters, grid_pars: type_defs.GridDescription
     ) -> results.SimulationResult:
         """Access simulation results."""
-        if self.execution_time <= 0:
-            raise TypeError("Perform simulation before accessing results!")
 
-        return results.SimulationResult().from_simulation(
-            run_params=self.run_params,
+        sys_pars = dict()
+        agent_ts = dict()
+        for node in self.grid_nodes:
+            sys_pars[node.sys_id] = node.model_input["params"]
+            agent_ts[node.sys_id] = node.get_output()
+
+        return results.SimulationResult(
+            run_pars=self.run_pars,
             opt_pars=opt_pars,
             grid_pars=grid_pars,
-            raw_output={node.sys_id: node.get_output() for node in self.grid_nodes},
-            assigned_grid_fees=self.ts,
-            sizing={node.sys_id: node.model_input["params"] for node in self.grid_nodes},
+            agent_dict=agent_ts,
+            sys_pars=sys_pars,
+            assigned_grid_fees=self.signal_ts,
             time_index=self.time_index,
-            exec_time=self.execution_time,
-        )
+            execution_time=self.execution_time)

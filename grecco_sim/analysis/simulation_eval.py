@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, Dict, Mapping, Tuple
+from typing import Any, Dict, Mapping, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -61,7 +61,7 @@ def _get_aggregated_ts_result(sim_results: results.SimulationResult) -> pd.Serie
 
     # Sum agents across columns -> aggregated net power at PCC (kW)
     res_load: pd.Series = sim_results.ts_grid.sum(axis=1)
-    dt_h = sim_results.run_params.dt.seconds / 3600
+    dt_h = sim_results.run_pars.dt.seconds / 3600
 
     data: Dict[str, Any] = {}
     data["dt_h"] = dt_h
@@ -165,14 +165,14 @@ def flex_analysis(
 
 
 def signal_analysis(
-    run_params: type_defs.RunParameters, raw_output: Mapping[str, Dict[str, Any]]
+    run_pars: type_defs.RunParameters, raw_output: Mapping[str, Dict[str, Any]]
 ) -> None:
-    if not getattr(run_params, "plot", False):
+    if not getattr(run_pars, "plot", False):
         return
 
-    if run_params.coordination_mechanism not in {"admm", "second_order"}:
+    if run_pars.coordination_mechanism not in {"admm", "second_order"}:
         print(
-            f"No analysis to be made for '{run_params.coordination_mechanism}' coordination mechanism."
+            f"No analysis to be made for '{run_pars.coordination_mechanism}' coordination mechanism."
         )
         return
 
@@ -254,7 +254,7 @@ def _cycles_from_soc(soc: np.ndarray) -> float:
 
 def agent_analysis(
     agent_ts: Mapping[str, pd.DataFrame], dt_h: float
-) -> Tuple[pd.DataFrame, Dict[str, Series]]:
+) -> Tuple[pd.DataFrame, Dict[str, pd.Series]]:
     """Compute KPIs for each agent.
 
     Definitions / Notes
@@ -441,18 +441,18 @@ def calculate_ccs(soc: np.ndarray) -> float:
 
 
 def _write_to_files(
-    run_params: type_defs.RunParameters,
+    run_pars: type_defs.RunParameters,
     eval_res: Union[Mapping[str, Any], pd.Series, pd.DataFrame],
     file_name: str = "kpis",
 ) -> None:
-    """Persist evaluation results to CSV in `run_params.output_file_dir`.
+    """Persist evaluation results to CSV in `run_pars.output_file_dir`.
 
     - If `eval_res` is a DataFrame, append/union columns and write.
     - If `eval_res` is a Series, convert to one-row DataFrame.
     - If it's a mapping, convert to one-row DataFrame (index = tag if present).
     - If it's a dict of Series, we use `DataFrame.from_dict(..., orient='index')`.
     """
-    out_dir: pathlib.Path = run_params.output_file_dir
+    out_dir: pathlib.Path = run_pars.output_file_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Build DataFrame to append
@@ -493,7 +493,8 @@ def evaluate_sim(sim_result: results.SimulationResult) -> Dict[str, Any]:
     agg_series = _get_aggregated_ts_result(sim_result)
 
     # Flex analysis (Series)
-    flex_series = flex_analysis(sim_result.agents_ts, sim_result.sizing, float(agg_series["dt_h"]))  # type: ignore[arg-type]
+    flex_series = flex_analysis(sim_result.agents_ts, sim_result.sys_pars,
+                                float(agg_series["dt_h"]))  # type: ignore[arg-type]
 
     # Compose one evaluation row
     eval_row = pd.concat(
@@ -502,33 +503,33 @@ def evaluate_sim(sim_result: results.SimulationResult) -> Dict[str, Any]:
             flex_series.drop(labels=["en_in_bat_ts"], errors="ignore"),
             pd.Series(
                 {
-                    "tag": sim_result.run_params.sim_tag,
-                    "calc_time": sim_result.exec_time,
+                    "tag": sim_result.run_pars.sim_tag,
+                    "calc_time": sim_result.execution_time,
                 }
             ),
         ]
     )
 
     eval_df = eval_row.to_frame().T
-    eval_df.index = [sim_result.run_params.sim_tag]
+    eval_df.index = [sim_result.run_pars.sim_tag]
     eval_df.index.name = "tag"
 
     # Per-agent analysis
     agent_kpis, agent_stats = agent_analysis(sim_result.agents_ts, float(agg_series["dt_h"]))  # type: ignore[arg-type]
 
     # Logging to console (compact)
-    print(f"Analysis result for sim {sim_result.run_params.sim_tag}: {eval_row}")
-    _write_to_files(sim_result.run_params, eval_df, "kpis")
+    print(f"Analysis result for sim {sim_result.run_pars.sim_tag}: {eval_row}")
+    _write_to_files(sim_result.run_pars, eval_df, "kpis")
 
     # Persist agent statistics with the tag row
     stats_with_tag: Dict[str, pd.Series] = {}
     for key, ser in agent_stats.items():
         ser = ser.copy()
-        ser.loc["tag"] = sim_result.run_params.sim_tag
+        ser.loc["tag"] = sim_result.run_pars.sim_tag
         stats_with_tag[key] = ser
     print(
-        f"Mean agent analysis result for sim {sim_result.run_params.sim_tag}: {agent_stats['mean']}"
+        f"Mean agent analysis result for sim {sim_result.run_pars.sim_tag}: {agent_stats['mean']}"
     )
-    _write_to_files(sim_result.run_params, stats_with_tag, "agent_stats")
+    _write_to_files(sim_result.run_pars, stats_with_tag, "agent_stats")
 
     return {"general_res": eval_row, "agent_res": agent_kpis, "agent_stats": agent_stats}

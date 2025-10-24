@@ -5,6 +5,7 @@ Module with some analysis over different simulation runs.
 from grecco_sim.simulator import results
 from grecco_sim.util import type_defs
 from grecco_sim.util import style
+from grecco_sim.util.result import build_result_from_files
 
 
 def _read_results(
@@ -12,10 +13,9 @@ def _read_results(
 ) -> dict[str, results.SimulationResult]:
     all_results = {}
 
-    for run_params in run_par_sets:
-        sim_res = results.SimulationResult()
-        sim_res.from_files(run_params.output_file_dir)
-        all_results[run_params.sim_tag] = sim_res
+    for run_pars in run_par_sets:
+        sim_result = build_result_from_files(run_pars.output_file_dir)
+        all_results[run_pars.sim_tag] = sim_result
 
     return all_results
 
@@ -42,12 +42,12 @@ def compare(run_par_sets: list[type_defs.RunParameters]):
 
     for sim_tag, sim_res in all_results.items():
         ax.plot(
-            sim_res.trafo_sum,
+            sim_res.p_trafo,
             label=sim_tag + " " + sim_res.opt_pars.solver_name,
             drawstyle="steps-post",
         )
 
-        if sim_res.run_params.coordination_mechanism == "plain_grid_fee":
+        if sim_res.run_pars.coordination_mechanism == "plain_grid_fee":
             signals = sim_res.assigned_grid_fees.drop(columns="iterations").sum(axis=1)
 
             ax.plot(
