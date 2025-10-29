@@ -2,7 +2,7 @@
 Module with some analysis over different simulation runs.
 """
 
-from grecco_sim.simulator import results
+from grecco_sim.simulator import result
 from grecco_sim.util import type_defs
 from grecco_sim.util import style
 from grecco_sim.util.result import build_result_from_files

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import os
 
-from grecco_sim.simulator import results
+from grecco_sim.simulator import result
 from grecco_sim.util import style, type_defs
 
 

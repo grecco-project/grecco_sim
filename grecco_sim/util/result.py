@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from grecco_sim.simulator.results import SimulationResult
+from grecco_sim.simulator.result import SimulationResult
 from grecco_sim.util import type_defs, data_io
 
 

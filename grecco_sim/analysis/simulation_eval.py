@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from grecco_sim.sim_models import battery
-from grecco_sim.simulator import results
+from grecco_sim.simulator import result
 from grecco_sim.util import sig_types, type_defs, style
 
 

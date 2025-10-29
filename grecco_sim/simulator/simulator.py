@@ -8,7 +8,7 @@ from typing import Union
 import pandas as pd
 import numpy as np
 
-from grecco_sim.simulator import results
+from grecco_sim.simulator import result
 from grecco_sim.util.type_defs import RunParameters
 from grecco_sim.coordinators import coord_interface
 from grecco_sim.sim_models import grid, grid_node
