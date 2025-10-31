@@ -10,7 +10,7 @@ from grecco_sim.util.result import build_result_from_files
 
 def _read_results(
     run_par_sets: list[type_defs.RunParameters],
-) -> dict[str, results.SimulationResult]:
+) -> dict[str, result.SimulationResult]:
     all_results = {}
 
     for run_pars in run_par_sets:

@@ -1,5 +1,4 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 
 from grecco_sim.coordinators import coord_base
 from grecco_sim.util import type_defs
@@ -13,6 +12,8 @@ from grecco_sim.simulator import simulator
 from grecco_sim.sim_models import grid_node
 
 from grecco_sim.analysis import plotter, simulation_eval
+
+from grecco_sim.simulator.metrics import evaluate_kpis
 
 logger.set_logger()
 
@@ -152,7 +153,9 @@ class SimulationSetup(object):
         sim_result.export_to_files()
 
         # Evaluate simulation.
+        network_kpis, agent_kpis = evaluate_kpis(sim_result)
         eval_results = simulation_eval.evaluate_sim(sim_result)
+        # ToDo: Discuss with Rebecca if flex analysis is needed.
 
         # Plot some results. Plotting function decides if plots must be shown based on run_pars
         plotter.make_plots(sim_result)

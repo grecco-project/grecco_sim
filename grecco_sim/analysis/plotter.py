@@ -23,7 +23,7 @@ class PlottingMetaInf:
 
 
 def make_plots(
-    sim_result: results.SimulationResult,
+    sim_result: result.SimulationResult,
 ):
     """Make plots for visual analysis."""
     if not sim_result.run_pars.plot:
@@ -324,7 +324,7 @@ def _plot_flex_nodes(
     fig.savefig(run_pars.output_file_dir / "plots" / "Flex.png")
 
 
-def make_agent_plots(kpis_ag: pd.DataFrame, run_pars: results.SimulationResult, agents="all"):
+def make_agent_plots(kpis_ag: pd.DataFrame, run_pars: result.SimulationResult, agents="all"):
     """Make plots from agent evaluation."""
     if not run_pars.plot:
         return

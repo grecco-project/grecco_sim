@@ -93,6 +93,10 @@ class SimulationResult:
         self.execution_time = execution_time
 
     @property
+    def dt_h(self) -> float:
+        return self.run_pars.dt_h
+
+    @property
     def tag(self) -> str:
         return self.run_pars.sim_tag
 

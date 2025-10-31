@@ -42,7 +42,7 @@ def _safe_min(values: np.ndarray, default=np.nan) -> float:
 # ---------------------------------------------------------------------------
 
 
-def _get_aggregated_ts_result(sim_results: results.SimulationResult) -> pd.Series:
+def _get_aggregated_ts_result(sim_results: result.SimulationResult) -> pd.Series:
     """KPIs computed from the aggregated grid power profile.
 
     Returns a **pd.Series** with the documented KPI fields as index.
@@ -484,7 +484,7 @@ def _write_to_files(
 # ---------------------------------------------------------------------------
 
 
-def evaluate_sim(sim_result: results.SimulationResult) -> Dict[str, Any]:
+def evaluate_sim(sim_result: result.SimulationResult) -> Dict[str, Any]:
     """Evaluate a simulation result and persist KPIs.
 
     Returns a dict with keys: "general_res", "agent_res", "agent_stats".

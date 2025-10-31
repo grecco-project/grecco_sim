@@ -146,7 +146,7 @@ class Simulator(object):
 
     def get_sim_result(
         self, opt_pars: type_defs.OptParameters, grid_pars: type_defs.GridDescription
-    ) -> results.SimulationResult:
+    ) -> result.SimulationResult:
         """Access simulation results."""
 
         sys_pars = dict()
@@ -155,7 +155,7 @@ class Simulator(object):
             sys_pars[node.sys_id] = node.model_input["params"]
             agent_ts[node.sys_id] = node.get_output()
 
-        return results.SimulationResult(
+        return result.SimulationResult(
             run_pars=self.run_pars,
             opt_pars=opt_pars,
             grid_pars=grid_pars,

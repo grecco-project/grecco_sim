@@ -45,7 +45,7 @@ def run_simulation(
         max_market_iterations=4,
         coordination_mechanism=coord_type,
         scenario=scenario,
-        sim_tag=coord_type,
+        sim_tag=sim_name,
         use_prev_signals=False,
         plot=True,
         show=False,

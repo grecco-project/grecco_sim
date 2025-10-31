@@ -1,14 +1,35 @@
-from typing import Callable, Any
+from typing import Any, Dict, Mapping, Tuple, Union
+from pathlib import Path
+from typing import Callable
+import numpy as np
+
 import pandas as pd
 
-KPI = Callable[[SimulationResult], Any]
-NETWORK_KPIS: dict[str, KPI] = {}
-# AGENT_KPIS: dict[str, dict[str, KPI]] = {}
+import warnings
+
+from grecco_sim.simulator.result import SimulationResult
+from grecco_sim.util import type_defs
+
+
+# A network KPI is applied to Simulation result.
+NETWORK_KPI = Callable[[SimulationResult], Any]
+NETWORK_KPIS: dict[str, NETWORK_KPI] = {}
+
+# An agent KPI is applied to the dataframe representing the agents results.
+AGENT_KPI = Callable[[pd.DataFrame], Any]
+AGENT_KPIS: dict[str, dict[str, KPI]] = {}
 
 
 def network_kpi(name: str):
     def wrap(fn: KPI):
         NETWORK_KPIS[name] = fn
+        return fn
+    return wrap
+
+
+def agent_kpi(name: str):
+    def wrap(fn: AGENT_KPI):
+        AGENT_KPIS[name] = fn
         return fn
     return wrap
 
@@ -21,37 +42,37 @@ def trafo_load(sim_result: SimulationResult) -> pd.DataFrame:
 
 @network_kpi("max_load")
 def max_load(sim_result: SimulationResult) -> float:
-    return trafo_load(sim_result).clip(lower=0).max()
+    return sim_result.ts_grid.clip(lower=0).max().max()
 
 
 @network_kpi("dt_h")
 def dt_h(sim_result: SimulationResult) -> float:
-    raise NotImplementedError("This should never be a KPI.")
-    return sim_results.run_pars.dth
+    warnings.warn("Input parameters should never be a KPI.")
+    return sim_result.run_pars.dt_h
 
 
 @network_kpi("max_feed")
-def max_feed(res: SimulationResult) -> float:
+def max_feed(sim_result: SimulationResult) -> float:
     return -(trafo_load(sim_result).clip(upper=0).min())
 
 
 @network_kpi("MV_demand")
-def mv_demand(res: SimulationResult) -> float:
+def mv_demand(sim_result: SimulationResult) -> float:
     """ The total demand of power withdrawn from the MV grid. """
-    return trafo_load(sim_result).clip(0).sum() * sim_results.run_pars.dth
+    return trafo_load(sim_result).clip(0).sum() * sim_result.run_pars.dt_h
 
 
 @network_kpi("MV_feed")
-def mv_feed(res: SimulationResult) -> float:
+def mv_feed(sim_result: SimulationResult) -> float:
     """ The total power fed-in to the MV grid. """
-    return (-trafo_load(sim_result)).clip(0).sum() * sim_results.run_pars.dth
+    return (-trafo_load(sim_result)).clip(0).sum() * sim_result.run_pars.dt_h
 
 
 @network_kpi("agg_signal")
-def total_signal_costs(res: SimulationResult) -> float:
-    fee_cols = [col for col in sim_results.assigned_grid_fees if "fee" in col]
+def total_signal_costs(sim_result: SimulationResult) -> float:
+    fee_cols = [col for col in sim_result.assigned_grid_fees if "fee" in col]
     try:
-        return fee_cols.sum().item()
+        return sim_result.assigned_grid_fees[fee_cols].sum().item()
     except ValueError:
         # Does this Exception occur?
         print("No Signals were found. ")
@@ -59,122 +80,457 @@ def total_signal_costs(res: SimulationResult) -> float:
 
 
 @network_kpi("congested_load")
-def congested_load(res: SimulationResult) -> float:
-    return (trafo_load(sim_result) > sim_results.grid_pars.p_lim).sum()
+def congested_load(sim_result: SimulationResult) -> float:
+    return (trafo_load(sim_result) > sim_result.grid_pars.p_lim).sum()
 
 
 @network_kpi("congested_pv")
-def congested_pv(res: SimulationResult) -> float:
-    return (trafo_load(sim_result) < sim_results.grid_pars.p_lim).sum()
+def congested_pv(sim_result: SimulationResult) -> float:
+    return (trafo_load(sim_result) < sim_result.grid_pars.p_lim).sum()
 
 
 @network_kpi("congested_times")
-def congested_times(res: SimulationResult) -> float:
+def congested_times(sim_result: SimulationResult) -> float:
     return congested_pv(sim_result) + congested_load(sim_result)
 
 
-
-def flex_analysis(
-    agent_ts: Mapping[str, pd.DataFrame],
-    sizing: Mapping[str, type_defs.SysParsPVBat],
-    dt_h: float,
-) -> pd.Series:
-    """Aggregate per-agent quantities for quick flex overview.
-
-    Returns a **pd.Series** so the whole evaluation can be composed into a
-    single-row DataFrame easily.
-    """
-    costs_all = 0.0
-    en_in_bat_ts: np.ndarray | None = None
-    combined_cap = 0.0
-    en_loss = 0.0
-    agg_feed = 0.0
-    agg_bat_to_grid = 0.0
-
-    for sys_id, df in agent_ts.items():
-        pv = df["p_el_pv"] if "p_el_pv" in df.columns else pd.Series(0.0, index=df.index)
-        grid = df["grid"]
-
-        supp = grid.clip(lower=0)
-        feed = grid.clip(upper=0)
-
-        costs_supp = (
-            float((supp.to_numpy() * df["c_sup"].to_numpy())[supp.to_numpy() > 0].sum()) * dt_h
-        )
-        costs_feed = (
-            float((feed.to_numpy() * df["c_feed"].to_numpy())[feed.to_numpy() < 0].sum()) * dt_h
-        )
-        costs_all += costs_supp + costs_feed
-
-        # Battery export estimation (battery to grid = net export beyond PV)
-        bat_to_grid = (grid + pv).to_numpy()
-        bat_to_grid = bat_to_grid[bat_to_grid < 0]
-        agg_bat_to_grid += float(bat_to_grid.sum()) * dt_h
-        agg_feed += float(feed.sum()) * dt_h
-
-        # Battery energy-in-timeseries accumulation
-        if isinstance(sizing.get(sys_id), type_defs.SysParsPVBat) and "bat_soc" in df.columns:
-            cap = float(sizing[sys_id].capacity)
-            contrib = df["bat_soc"].to_numpy() * cap
-            en_in_bat_ts = contrib if en_in_bat_ts is None else (en_in_bat_ts + contrib)
-            combined_cap += cap
-            en_loss += float((df["bat_p_ac"] - df["bat_p_net"]).sum()) * float(sizing[sys_id].dt_h)
-
-    charged_energy = 0.0 if en_in_bat_ts is None else float(en_in_bat_ts[-1] - en_in_bat_ts[0])
-    return pd.Series(
-        {
-            "costs_all": costs_all,
-            "en_in_bat_ts": en_in_bat_ts,
-            "charged_energy": charged_energy,
-            "combined_capacity": combined_cap,
-            "losses_bat": en_loss,
-            "agg_feed": agg_feed,
-            "agg_bat_to_grid": agg_bat_to_grid,
-        }
-    )
+# @network_kpi("costs_all")
+# def costs_all(sim_result: SimulationResult) -> float:
+#     grid =
+#
+#     supp = grid.clip(lower=0)
+#     feed = grid.clip(upper=0)
+#
+#     costs_supp = (
+#             float((supp.to_numpy() * df["c_sup"].to_numpy())[
+#                       supp.to_numpy() > 0].sum()) * dt_h
+#     )
+#     costs_feed = (
+#             float((feed.to_numpy() * df["c_feed"].to_numpy())[
+#                       feed.to_numpy() < 0].sum()) * dt_h
+#     )
+#     costs_all += costs_supp + costs_feed
+#
+#
 
 
-def signal_analysis(
-    run_pars: type_defs.RunParameters, raw_output: Mapping[str, Dict[str, Any]]
-) -> None:
-    if not getattr(run_pars, "plot", False):
-        return
-
-    if run_pars.coordination_mechanism not in {"admm", "second_order"}:
-        print(
-            f"No analysis to be made for '{run_pars.coordination_mechanism}' coordination mechanism."
-        )
-        return
-
-    fig_sig, ax_sig = style.styled_plot(title="Signal over time", ylabel="Signal", figsize=(16, 8))
-    fig_ref, ax_ref = style.styled_plot(
-        title="Reference power over time", ylabel="Power / kW", figsize=(16, 8)
-    )
-
-    first = next(iter(raw_output.values()), None)
-    if not first or "signals" not in first:
-        print("No 'signals' in raw_output; skip signal plots.")
-        return
-
-    for k, signal in first["signals"].items():
-        if not isinstance(signal, sig_types.SecondOrderSignal):
-            print(f"Signal not SecondOrderSignal but {type(signal)}")
-            return
-        x = np.arange(start=k, stop=k + signal.signal_len)
-        sig = ax_sig.plot(x, signal.mul_lambda, label=f"k = {k}", drawstyle="steps-post")
-        ax_sig.plot(k, signal.mul_lambda[0], marker="s", color=sig[0].get_color(), label=None)
-        ref = ax_ref.plot(x, signal.res_power_set, label=f"k = {k}", drawstyle="steps-post")
-        ax_ref.plot(k, signal.res_power_set[0], marker="s", color=ref[0].get_color(), label=None)
-
-    ax_sig.legend()
-    ax_ref.legend()
-    fig_sig.tight_layout()
-    fig_ref.tight_layout()
+@agent_kpi("grid_demand")
+def total_demand_kwh(sim_result: SimulationResult) -> dict[str, float]:
+    total_demand_kwh = dict()
+    for sys_id, df in sim_result.agents_ts.items():
+        total_demand_kwh[sys_id] = df["grid"].clip(lower=0).sum()
+    return total_demand_kwh
 
 
-# ---------------------------------------------------------------------------
-# Per-agent KPI analysis
-# ---------------------------------------------------------------------------
+@agent_kpi("max_grid_demand")
+def max_demand_kw(sim_result: SimulationResult) -> dict[str, float]:
+    max_demand_kw = dict()
+    for sys_id, df in sim_result.agents_ts.items():
+        max_demand_kw[sys_id] = df["grid"].clip(lower=0).max()
+    return max_demand_kw
+
+
+@agent_kpi("costs")
+def capacity_costs(sim_result: SimulationResult) -> dict[str, float]:
+    capacity_costs = dict()
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        demand_capacity = df["grid"].clip(lower=0)
+        c_sup = df["c_sup"]
+        capacity_costs[sys_id] = (demand_capacity * c_sup).sum() * dt_h
+    return capacity_costs
+
+
+@agent_kpi("battery_energy")
+def battery_energy(sim_result: SimulationResult) -> dict[str, float]:
+    battery_energy = dict()
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        bat_p_net = df["bat_p_net"] if "bat_p_net" in df.columns else 0.0
+        battery_energy[sys_id] = bat_p_net.clip(0).sum() * dt_h
+    return battery_energy
+
+
+@agent_kpi("battery_energy_from_grid")
+def bss_kwh_from_grid(sim_result: SimulationResult) -> dict[str, float]:
+    """ Total charged energy to BSS while household net load is postive. """
+    warnings.warn("The math of battery_energy_from_grid does not seem right.")
+    bss_kwh_from_grid = dict()
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "bat_p_ac" in df.columns:
+            kw_from_grid = df["bat_p_ac"][df["grid"] > 0].clip(0).sum()
+            bss_kwh_from_grid[sys_id] = kw_from_grid * dt_h
+        else:
+            bss_kwh_from_grid[sys_id] = 0.0
+
+    return bss_kwh_from_grid
+
+
+@agent_kpi("battery_max_from_grid")
+def bss_max_kw_from_grid(sim_result: SimulationResult) -> dict[str, float]:
+    """ Maxmimal BSS charge load while household net load is postive. """
+    warnings.warn("The math of battery_max_from_grid does not seem right.")
+    bss_max_kw_from_grid = dict()
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "bat_p_ac" in df.columns:
+            kw_from_grid = df["bat_p_ac"][df["grid"] > 0].clip(0)
+            bss_max_kw_from_grid[sys_id] = kw_from_grid.max()
+        else:
+            bss_max_kw_from_grid[sys_id] = float("nan")
+    return bss_max_kw_from_grid
+
+
+@agent_kpi("battery_energy_to_grid")
+def battery_energy_to_grid(sim_result: SimulationResult) -> dict[str, float]:
+    """ Total discharged energy of BSS while household net load is negative."""
+    warnings.warn("The math of battery_energy_to_grid does not seem right.")
+    battery_energy_to_grid = dict()
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "bat_p_ac" in df.columns:
+            kw_to_grid = (-df["bat_p_ac"])[df["grid"] < 0].clip(0).sum()
+            battery_energy_to_grid[sys_id] = kw_to_grid * dt_h
+        else:
+            battery_energy_to_grid[sys_id] = 0.0
+    return battery_energy_to_grid
+
+
+@agent_kpi("battery_max_to_grid")
+def battery_max_to_grid(sim_result: SimulationResult) -> dict[str, float]:
+    """ Maxmimal BSS discharge load while household net load is negative. """
+    warnings.warn("The math of battery_max_to_grid does not seem right.")
+    bss_max_kw_to_grid = dict()
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "bat_p_ac" in df.columns:
+            kw_to_grid = (-df["bat_p_ac"])[df["grid"] > 0].clip(0)
+            bss_max_kw_to_grid[sys_id] = kw_to_grid.max()
+        else:
+            bss_max_kw_to_grid[sys_id] = float("nan")
+    return bss_max_kw_to_grid
+
+@agent_kpi("overcharge_bat")
+def overcharge_bat(sim_result: SimulationResult) -> dict[str, float]:
+    overcharge_bat = dict()
+    for sys_id, df in sim_result.agents_ts.items():
+        if "bat_soc" in df.columns:
+            overcharge_bat[sys_id] = (df["bat_soc"] > 1.0).sum()
+        else:
+            overcharge_bat[sys_id] = 0.0
+    return overcharge_bat
+
+
+@agent_kpi("undercharge_bat")
+def undercharge_bat(sim_result: SimulationResult) -> dict[str, float]:
+    undercharge_bat = dict()
+    for sys_id, df in sim_result.agents_ts.items():
+        if "bat_soc" in df.columns:
+            undercharge_bat[sys_id] = float((df["bat_soc"] < 0.0).sum())
+        else:
+            undercharge_bat[sys_id] = 0.0
+    return undercharge_bat
+
+
+@agent_kpi("charging_cycle_equivalents")
+def equivalent_full_charge_cycles(sim_result: SimulationResult) -> dict[str, float]:
+    """ Here some explanations would be really nice. """
+    full_charge_cycles = dict()
+    for sys_id, df in sim_result.agents_ts.items():
+        if "bat_soc" in df.columns and df["bat_soc"].size >= 2:
+            diff = np.diff(df["bat_soc"])
+            full_charge_cycles[sys_id] = float(diff[diff > 0].sum())
+        else:
+            full_charge_cycles[sys_id] = float("nan")
+    return full_charge_cycles
+
+
+@agent_kpi("mean_temp")
+def mean_temperature(sim_result: SimulationResult) -> dict[str, float]:
+    """Average indoor temperature of the building."""
+    mean_temperature = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        if "hp_temp" in df.columns:
+            mean_temperature[sys_id] = float(df["hp_temp"].mean())
+        else:
+            mean_temperature[sys_id] = float("nan")
+    return mean_temperature
+
+
+@agent_kpi("hp_energy_el")
+def hp_energy_el(sim_result: SimulationResult) -> dict[str, float]:
+    """Total electrical energy consumed by the heat pump."""
+    hp_energy_el = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "hp_p_in" in df.columns:
+            hp_energy_el[sys_id] = df["hp_p_in"].sum() * dt_h
+        else:
+            hp_energy_el[sys_id] = 0.0
+    return hp_energy_el
+
+
+@agent_kpi("hp_p_max")
+def hp_p_max(sim_result: SimulationResult) -> dict[str, float]:
+    """Maximum electrical input power of the heat pump."""
+    hp_p_max = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        if "hp_p_in" in df.columns > 0:
+            hp_p_max[sys_id] = df["hp_p_in"].max()
+        else:
+            hp_p_max[sys_id] = float("nan")
+    return hp_p_max
+
+
+@agent_kpi("overheating")
+def overheating(sim_result: SimulationResult) -> dict[str, float]:
+    """Number of timesteps where the heat pump temperature exceeded 23°C."""
+    overheating = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        if "hp_temp" in df.columns:
+            overheating[sys_id] = float((df["hp_temp"] > 23).sum())
+        else:
+            overheating[sys_id] = 0.0
+    return overheating
+
+
+@agent_kpi("underheating")
+def underheating(sim_result: SimulationResult) -> dict[str, float]:
+    """Number of timesteps where the heat pump temperature was below 18°C."""
+    underheating = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        if "hp_temp" in df.columns:
+            underheating[sys_id] = float((df["hp_temp"] < 18).sum())
+        else:
+            underheating[sys_id] = 0.0
+    return underheating
+
+
+@agent_kpi("above_t")
+def above_t(sim_result: SimulationResult) -> dict[str, float]:
+    """Alias metric for overheating (timesteps above temperature threshold)."""
+    return overheating(sim_result)
+
+
+@agent_kpi("under_t")
+def under_t(sim_result: SimulationResult) -> dict[str, float]:
+    """Alias metric for underheating (timesteps below temperature threshold)."""
+    return underheating(sim_result)
+
+
+@agent_kpi("ev_energy")
+def ev_energy(sim_result: SimulationResult) -> dict[str, float]:
+    """Total electrical energy charged into the EV (from all sources)."""
+    ev_energy = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "ev_p_net" in df.columns:
+            ev_energy[sys_id] = float(df["ev_p_net"].clip(lower=0).sum() * dt_h)
+        else:
+            ev_energy[sys_id] = 0.0
+    return ev_energy
+
+
+@agent_kpi("ev_energy_from_grid")
+def ev_energy_from_grid(sim_result: SimulationResult) -> dict[str, float]:
+    """Energy charged into the EV that originated from the grid."""
+    ev_energy_from_grid = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "ev_p_ac" in df.columns:
+            from_grid = (df["ev_p_net"] > 0) & (df["grid"] > 0)
+            df[from_grid, "ev_p_ac"].sum() * dt_h
+            ev_energy_from_grid[sys_id] = df[from_grid, "ev_p_ac"].sum() * dt_h
+        else:
+            ev_energy_from_grid[sys_id] = 0.0
+    return ev_energy_from_grid
+
+
+@agent_kpi("ev_max_from_grid")
+def ev_max_from_grid(sim_result: SimulationResult) -> dict[str, float]:
+    """Maximum EV charging power drawn from the grid."""
+    ev_max_from_grid = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        if "ev_p_ac" in df.columns:
+            from_grid = (df["ev_p_net"] > 0) & (df["grid"] > 0)
+            if from_grid.any():
+                ev_max_from_grid[sys_id] = df[from_grid, "ev_p_ac"].max()
+            else:
+                ev_max_from_grid[sys_id] = float("nan")
+        else:
+            ev_max_from_grid[sys_id] = float("nan")
+
+    return ev_max_from_grid
+
+
+@agent_kpi("ev_energy_to_grid")
+def ev_energy_to_grid(sim_result: SimulationResult) -> dict[str, float]:
+    """Energy discharged from the EV back to the grid (V2G)."""
+    ev_energy_to_grid = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "ev_p_ac" in df.columns:
+            from_grid = (-df["ev_p_net"] > 0) & (-df["grid"] > 0)
+            df[from_grid, "ev_p_ac"].sum() * dt_h
+            ev_energy_to_grid[sys_id] = -df[from_grid, "ev_p_ac"].sum() * dt_h
+        else:
+            ev_energy_to_grid[sys_id] = 0.0
+    return ev_energy_to_grid
+
+
+@agent_kpi("overcharge_ev")
+def overcharge_ev(sim_result: SimulationResult) -> dict[str, float]:
+    """Number of timesteps where the EV SoC exceeded 100%."""
+    overcharge_ev = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        if "ev_soc" in df.columns:
+            overcharge_ev[sys_id] = float((df["ev_soc"] > 1.0).sum())
+        else:
+            overcharge_ev[sys_id] = 0.0
+    return overcharge_ev
+
+
+@agent_kpi("undercharge_ev")
+def undercharge_ev(sim_result: SimulationResult) -> dict[str, float]:
+    """Number of timesteps where the EV SoC dropped below 0%."""
+    undercharge_ev = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        if "ev_soc" in df.columns:
+            undercharge_ev[sys_id] = float((df["ev_soc"] < 0.0).sum())
+        else:
+            undercharge_ev[sys_id] = 0.0
+    return undercharge_ev
+
+
+@agent_kpi("total_import")
+def total_import(sim_result: SimulationResult) -> dict[str, float]:
+    """Total electrical energy imported from the grid [kWh]."""
+    total_import = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        total_import[sys_id] = df["grid"].clip(0).sum() * dt_h
+    return total_import
+
+
+@agent_kpi("max_import")
+def max_import(sim_result: SimulationResult) -> dict[str, float]:
+    """Maximum grid import power [kW]."""
+    max_import = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        max_import[sys_id] = df["grid"][df["grid"] > 0].max()
+
+    return max_import
+
+
+@agent_kpi("total_feed")
+def total_feed(sim_result: SimulationResult) -> dict[str, float]:
+    """Total energy exported to the grid [kWh]."""
+    total_feed = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        total_feed[sys_id] = (-df["grid"]).clip(0).sum() * dt_h
+    return total_feed
+
+
+@agent_kpi("max_feed")
+def max_feed(sim_result: SimulationResult) -> dict[str, float]:
+    """ Maximum export power magnitude [kW]."""
+    max_feed = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        max_feed[sys_id] = (-df["grid"])[df["grid"] < 0].max()
+
+    return max_feed
+
+
+@agent_kpi("energy_consumption")
+def energy_consumption(sim_result: SimulationResult) -> dict[str, float]:
+    """Total energy consumed by all systems and electric load [kWh]."""
+    energy_consumption = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        base_load = df["p_el_load"].sum() if "p_el_load" in df.columns else 0.0
+        hp = df["hp_p_in"].clip(0).sum() if "hp_p_in" in df.columns else 0.0
+        ev = df["ev_p_net"].clip(0).sum() if "ev_p_net" in df.columns else 0.0
+        energy_consumption[sys_id] = base_load + hp + ev * dt_h
+    return energy_consumption
+
+
+@agent_kpi("self_consumption")
+def self_consumption(sim_result: SimulationResult) -> dict[str, float]:
+    """PV generation used on-site [kWh]."""
+    self_consumption = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "p_el_pv" in df.columns:
+            pv_gen = float(df.loc[df["p_el_pv"] > 0, "p_el_pv"].sum() * dt_h)
+            export = float((-df.loc[df["grid"] < 0, "grid"]).sum() * dt_h)
+            self_consumption[sys_id] = max(0.0, pv_gen - export)
+        else:
+            self_consumption[sys_id] = 0.0
+    return self_consumption
+
+
+@agent_kpi("self_sufficiency")
+def self_sufficiency(sim_result: SimulationResult) -> dict[str, float]:
+    """ Ratio of total demand covered by local PV generation."""
+    self_sufficiency = {}
+    # Here only inflexible load was considered - why?
+    consumption = energy_consumption(sim_result)
+    for sys_id, df in sim_result.agents_ts.items():
+        self_sufficiency[sys_id] = self_consumption[sys_id] / consumption[sys_id]
+    return self_sufficiency
+
+
+@agent_kpi("costs")
+def costs(sim_result: SimulationResult) -> dict[str, float]:
+    """Total cost of electricity purchased from the grid."""
+    results = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if {"grid", "c_sup"}.issubset(df.columns):
+            values = (df["grid"] * df["c_sup"]).where(df["grid"] >= 0, 0.0)
+            results[sys_id] = float(values.sum() * dt_h)
+        else:
+            results[sys_id] = 0.0
+    return results
+
+
+@agent_kpi("revenue")
+def revenue(sim_result: SimulationResult) -> dict[str, float]:
+    """ Revenue from energy exported to the grid."""
+    revenue = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "c_feed" in df.columns:
+            revenues = (-df["grid"]).clip(0) * df["c_feed"]
+            revenue[sys_id] = revenues.sum() * dt_h
+        else:
+            revenue[sys_id] = 0.0
+    return revenue
+
+
+@agent_kpi("profit")
+def profit(sim_result: SimulationResult) -> dict[str, float]:
+    """Net profit from energy trading: revenue minus costs [€]."""
+    profit = {}
+    dt_h = sim_result.dt_h
+    for sys_id, df in sim_result.agents_ts.items():
+        if "c_feed" in df.columns:
+            profit[sys_id] = revenue[sys_id] - costs[sys_id]
+        else:
+            profit[sys_id] = 0.0
+    return profit
+
+
+@agent_kpi("net_grid_energy")
+def net_grid_energy(sim_result: SimulationResult) -> dict[str, float]:
+    """Net energy balance with the grid: imports minus exports [kWh]."""
+    net_grid_energy = {}
+    for sys_id, df in sim_result.agents_ts.items():
+        net_grid_energy[sys_id] = total_import[sys_id] - total_feed[sys_id]
+    return net_grid_energy
+
 
 AGENT_KPI_FIELDS = {
     "grid_demand",
@@ -211,205 +567,6 @@ AGENT_KPI_FIELDS = {
 }
 
 
-def _cycles_from_soc(soc: np.ndarray) -> float:
-    """Return charging-throughput in *equivalent full cycles on SoC basis*.
-
-    This equals sum of positive SoC increments. If SoC is in [0,1], this is EFC.
-    """
-    if soc.size < 2:
-        return 0.0
-    diff = np.diff(soc)
-    return float(diff[diff > 0].sum())
-
-
-def agent_analysis(
-    agent_ts: Mapping[str, pd.DataFrame], dt_h: float
-) -> Tuple[pd.DataFrame, Dict[str, pd.Series]]:
-    """Compute KPIs for each agent.
-
-    Definitions / Notes
-    -------------------
-    - All energy metrics integrate power with `dt_h` to kWh.
-    - `total_feed` is export energy to grid (kWh, positive magnitude).
-    - `max_feed` is the maximum export power magnitude (kW, positive value).
-    - EV energy is integrated from `ev_p_net` (kW), not from SoC.
-    - Self-consumption is PV generation used on-site: PV_gen - feed_to_grid, bounded below by 0.
-    - Profit = revenue - costs, where revenue is positive cash inflow from exports.
-    """
-    energy_map = {"hp": "hp_energy_el", "ev": "ev_energy"}
-    agents_res = pd.DataFrame(
-        index=list(agent_ts.keys()), columns=sorted(AGENT_KPI_FIELDS), dtype=float
-    )
-
-    for ag, df in agent_ts.items():
-        res: Dict[str, float] = {k: np.nan for k in AGENT_KPI_FIELDS}
-
-        # Basic consumption/cost metrics
-        grid = df["grid"].to_numpy()
-        c_sup = df["c_sup"].to_numpy() if "c_sup" in df.columns else np.zeros_like(grid)
-        c_feed = df["c_feed"].to_numpy() if "c_feed" in df.columns else np.zeros_like(grid)
-
-        demand_mask = grid >= 0
-        feed_mask = grid < 0
-
-        res.update(
-            {
-                "grid_demand": _masked_sum(grid, demand_mask, dt_h),
-                "max_grid_demand": _safe_max(grid[demand_mask]) if demand_mask.any() else 0.0,
-                "costs": _masked_sum(grid * c_sup, demand_mask, dt_h),
-            }
-        )
-
-        # Battery metrics
-        if {"bat_soc", "bat_p_ac", "bat_p_net"}.issubset(df.columns):
-            bat_soc = df["bat_soc"].to_numpy()
-            bat_p_ac = df["bat_p_ac"].to_numpy()
-            bat_p_net = df["bat_p_net"].to_numpy()
-
-            charge_mask = bat_p_net > 0
-            grid_charge_mask = (bat_p_net > 0) & (grid > 0)
-            grid_discharge_mask = (bat_p_ac < 0) & (grid < 0)
-
-            res.update(
-                {
-                    "battery_energy": _masked_sum(bat_p_net, charge_mask, dt_h),
-                    "battery_energy_from_grid": _masked_sum(bat_p_ac, grid_charge_mask, dt_h),
-                    "battery_max_from_grid": (
-                        _safe_max(bat_p_ac[grid_charge_mask]) if grid_charge_mask.any() else np.nan
-                    ),
-                    "battery_energy_to_grid": _masked_sum(bat_p_ac, grid_discharge_mask, dt_h),
-                    "battery_max_to_grid": (
-                        _safe_min(bat_p_ac[grid_discharge_mask])
-                        if grid_discharge_mask.any()
-                        else np.nan
-                    ),
-                    "overcharge_bat": float((bat_soc > 1).sum()),
-                    "undercharge_bat": float((bat_soc < 0).sum()),
-                    "charging_cycle_equivalents": _cycles_from_soc(bat_soc),
-                }
-            )
-
-        # Heat pump metrics
-        if {"hp_temp", "hp_p_in"}.issubset(df.columns):
-            hp_temp = df["hp_temp"].to_numpy()
-            hp_p_in = df["hp_p_in"].to_numpy()
-            hp_mask = hp_p_in > 0
-            upper_mask = hp_temp > 23
-            lower_mask = hp_temp < 18
-
-            res.update(
-                {
-                    "mean_temp": float(hp_temp.mean()) if hp_temp.size else np.nan,
-                    "hp_energy_el": _masked_sum(hp_p_in, hp_mask, dt_h),
-                    "hp_p_max": _safe_max(hp_p_in[hp_mask]) if hp_mask.any() else np.nan,
-                    "overheating": float(upper_mask.sum()),
-                    "underheating": float(lower_mask.sum()),
-                    "above_t": float(upper_mask.sum()),
-                    "under_t": float(lower_mask.sum()),
-                }
-            )
-
-        # EV metrics
-        if {"ev_soc", "ev_p_ac", "ev_p_net"}.issubset(df.columns):
-            ev_soc = df["ev_soc"].to_numpy()
-            ev_p_ac = df["ev_p_ac"].to_numpy()
-            ev_p_net = df["ev_p_net"].to_numpy()
-
-            charge_mask_ev = ev_p_net > 0
-            grid_charge_mask_ev = (ev_p_net > 0) & (grid > 0)
-            grid_discharge_mask_ev = (ev_p_ac < 0) & (grid < 0)
-
-            res.update(
-                {
-                    "ev_energy": _masked_sum(ev_p_net, charge_mask_ev, dt_h),
-                    "ev_energy_from_grid": _masked_sum(ev_p_ac, grid_charge_mask_ev, dt_h),
-                    "ev_max_from_grid": (
-                        _safe_max(ev_p_ac[grid_charge_mask_ev])
-                        if grid_charge_mask_ev.any()
-                        else np.nan
-                    ),
-                    "ev_energy_to_grid": _masked_sum(ev_p_ac, grid_discharge_mask_ev, dt_h),
-                    "overcharge_ev": float((ev_soc > 1).sum()),
-                    "undercharge_ev": float((ev_soc < 0).sum()),
-                }
-            )
-
-        # Overall energy demand sans battery netting
-        p_el_load = df["p_el_load"].to_numpy() if "p_el_load" in df.columns else np.zeros_like(grid)
-        systems = [
-            k for k in ("hp", "ev") if (energy_map[k] in res and not np.isnan(res[energy_map[k]]))
-        ]
-        total_demand_kwh = sum(res[energy_map[k]] for k in systems) + float(p_el_load.sum()) * dt_h
-        res["energy_consumption"] = total_demand_kwh
-
-        # PV + self-consumption + revenue/profit
-        if "p_el_pv" in df.columns:
-            pv = df["p_el_pv"].to_numpy()
-            # Export energy magnitude (kWh, positive):
-            export_kwh = _masked_sum(
-                -grid, feed_mask, dt_h
-            )  # -grid turns negative export power into positive magnitude
-            pv_gen_kwh = float(pv[pv > 0].sum()) * dt_h
-            self_consumption_kwh = max(0.0, pv_gen_kwh - export_kwh)
-
-            max_feed_kw = abs(_safe_min(grid[feed_mask])) if feed_mask.any() else np.nan
-
-            # Revenue: cash inflow from export; assume feed-in price is positive in `c_feed`
-            revenue = _masked_sum((-grid) * c_feed, feed_mask, dt_h)
-
-            res.update(
-                {
-                    "total_feed": export_kwh,
-                    "max_feed": max_feed_kw,
-                    "revenue": revenue,
-                    "self-consumption": self_consumption_kwh,
-                    "self-sufficiency": (
-                        (self_consumption_kwh / total_demand_kwh)
-                        if total_demand_kwh > 0
-                        else np.nan
-                    ),
-                }
-            )
-
-        # Profit calculation
-        if not np.isnan(res.get("revenue", np.nan)) and not np.isnan(res.get("costs", np.nan)):
-            res["profit"] = res.get("revenue", 0.0) - res.get("costs", 0.0)
-
-        agents_res.loc[ag] = pd.Series(res, dtype=float)
-
-    # Aggregate statistics
-    numeric_agents = agents_res.astype(float)
-    agent_stats: Dict[str, pd.Series] = {
-        "mean": numeric_agents.mean(numeric_only=True),
-        "median": numeric_agents.median(numeric_only=True),
-        "25_quantile": numeric_agents.quantile(0.25, numeric_only=True),
-        "75_quantile": numeric_agents.quantile(0.75, numeric_only=True),
-        "max": numeric_agents.max(numeric_only=True),
-        "min": numeric_agents.min(numeric_only=True),
-    }
-
-    return agents_res, agent_stats
-
-
-# ---------------------------------------------------------------------------
-# Battery cycles (public API maintained for backwards compatibility)
-# ---------------------------------------------------------------------------
-
-
-def calculate_ccs(soc: np.ndarray) -> float:
-    """Compatibility shim: return equivalent full cycles based on SoC increments.
-
-    Formerly returned "charging energy only". Now returns sum of positive SoC
-    deltas which equals EFC if SoC is normalized [0,1].
-    """
-    return _cycles_from_soc(soc)
-
-
-# ---------------------------------------------------------------------------
-# Persistence helpers
-# ---------------------------------------------------------------------------
-
-
 def _write_to_files(
     run_pars: type_defs.RunParameters,
     eval_res: Union[Mapping[str, Any], pd.Series, pd.DataFrame],
@@ -422,7 +579,7 @@ def _write_to_files(
     - If it's a mapping, convert to one-row DataFrame (index = tag if present).
     - If it's a dict of Series, we use `DataFrame.from_dict(..., orient='index')`.
     """
-    out_dir: pathlib.Path = run_pars.output_file_dir
+    out_dir: Path = run_pars.output_file_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Build DataFrame to append
@@ -449,57 +606,64 @@ def _write_to_files(
     eval_df.to_csv(eval_file_path)
 
 
-# ---------------------------------------------------------------------------
-# Main evaluation entrypoint
-# ---------------------------------------------------------------------------
+def evaluate_kpis(sim_result: SimulationResult) -> (
+        Tuple[pd.Series, Dict[str, Dict[str, float]]]):
+
+    network_kpis = {}
+    # Add sim_tag as id.
+    network_kpis["sim_tag"] = sim_result.tag
+
+    for kpi_name in list(NETWORK_KPIS.keys()):
+        try:
+            network_kpis[kpi_name] = NETWORK_KPIS[kpi_name](sim_result)
+        except Exception as e:
+            network_kpis[kpi_name] = f"ERROR: {e}"
+
+    # Agent KPIs: Dict[<KPI_NAME>, Dict[<SYS_ID>, <KPI_VALUE>]
+    agent_kpis = {}
+    dt_h = sim_result.dt_h
+
+    for kpi_name in list(AGENT_KPIS.keys()):
+        agent_kpis[kpi_name] = dict()
+
+        for sys_id, df in sim_result.agents_ts.items():
+            try:
+                agent_kpis[kpi_name][sys_id] = AGENT_KPIS[kpi_name](df, dt_h)
+            except Exception as e:
+                agent_kpis[kpi_name][sys_id] = f"ERROR: {e}"
+
+    return pd.Series(network_kpis), agent_kpis
 
 
-def evaluate_sim(sim_result: results.SimulationResult) -> Dict[str, Any]:
-    """Evaluate a simulation result and persist KPIs.
+# def agent_analysis(
+#     agent_ts: Mapping[str, pd.DataFrame], dt_h: float
+# ) -> Tuple[pd.DataFrame, Dict[str, pd.Series]]:
+#     """Compute KPIs for each agent.
+#
+#     Definitions / Notes
+#     -------------------
+#     - All energy metrics integrate power with `dt_h` to kWh.
+#     - `total_feed` is export energy to grid (kWh, positive magnitude).
+#     - `max_feed` is the maximum export power magnitude (kW, positive value).
+#     - EV energy is integrated from `ev_p_net` (kW), not from SoC.
+#     - Self-consumption is PV generation used on-site: PV_gen - feed_to_grid, bounded below by 0.
+#     - Profit = revenue - costs, where revenue is positive cash inflow from exports.
+#     """
+#     energy_map = {"hp": "hp_energy_el", "ev": "ev_energy"}
+#     agents_res = pd.DataFrame(
+#         index=list(agent_ts.keys()), columns=sorted(AGENT_KPI_FIELDS), dtype=float
+#     )
+#
+#     # Aggregate statistics
+#     numeric_agents = agents_res.astype(float)
+#     agent_stats: Dict[str, pd.Series] = {
+#         "mean": numeric_agents.mean(numeric_only=True),
+#         "median": numeric_agents.median(numeric_only=True),
+#         "25_quantile": numeric_agents.quantile(0.25, numeric_only=True),
+#         "75_quantile": numeric_agents.quantile(0.75, numeric_only=True),
+#         "max": numeric_agents.max(numeric_only=True),
+#         "min": numeric_agents.min(numeric_only=True),
+#     }
+#
+#     return agents_res, agent_stats
 
-    Returns a dict with keys: "general_res", "agent_res", "agent_stats".
-    """
-    # Aggregated KPIs (Series)
-    agg_series = _get_aggregated_ts_result(sim_result)
-
-    # Flex analysis (Series)
-    flex_series = flex_analysis(sim_result.agents_ts, sim_result.sys_pars,
-                                float(agg_series["dt_h"]))  # type: ignore[arg-type]
-
-    # Compose one evaluation row
-    eval_row = pd.concat(
-        [
-            agg_series,
-            flex_series.drop(labels=["en_in_bat_ts"], errors="ignore"),
-            pd.Series(
-                {
-                    "tag": sim_result.run_pars.sim_tag,
-                    "calc_time": sim_result.execution_time,
-                }
-            ),
-        ]
-    )
-
-    eval_df = eval_row.to_frame().T
-    eval_df.index = [sim_result.run_pars.sim_tag]
-    eval_df.index.name = "tag"
-
-    # Per-agent analysis
-    agent_kpis, agent_stats = agent_analysis(sim_result.agents_ts, float(agg_series["dt_h"]))  # type: ignore[arg-type]
-
-    # Logging to console (compact)
-    print(f"Analysis result for sim {sim_result.run_pars.sim_tag}: {eval_row}")
-    _write_to_files(sim_result.run_pars, eval_df, "kpis")
-
-    # Persist agent statistics with the tag row
-    stats_with_tag: Dict[str, pd.Series] = {}
-    for key, ser in agent_stats.items():
-        ser = ser.copy()
-        ser.loc["tag"] = sim_result.run_pars.sim_tag
-        stats_with_tag[key] = ser
-    print(
-        f"Mean agent analysis result for sim {sim_result.run_pars.sim_tag}: {agent_stats['mean']}"
-    )
-    _write_to_files(sim_result.run_pars, stats_with_tag, "agent_stats")
-
-    return {"general_res": eval_row, "agent_res": agent_kpis, "agent_stats": agent_stats}
