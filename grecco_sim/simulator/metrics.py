@@ -17,11 +17,11 @@ NETWORK_KPIS: dict[str, NETWORK_KPI] = {}
 
 # An agent KPI is applied to the dataframe representing the agents results.
 AGENT_KPI = Callable[[pd.DataFrame], Any]
-AGENT_KPIS: dict[str, dict[str, KPI]] = {}
+AGENT_KPIS: dict[str, dict[str, AGENT_KPI]] = {}
 
 
 def network_kpi(name: str):
-    def wrap(fn: KPI):
+    def wrap(fn: NETWORK_KPI):
         NETWORK_KPIS[name] = fn
         return fn
     return wrap
@@ -37,7 +37,7 @@ def agent_kpi(name: str):
 @network_kpi("trafo_load")
 def trafo_load(sim_result: SimulationResult) -> pd.DataFrame:
     """ Sum up along agent axis to retrieve transformer load for each step. """
-    return sim_result.ts_grid.sum(axis=1)
+    return float(sim_result.ts_grid.sum(axis=1))
 
 
 @network_kpi("max_load")
@@ -115,421 +115,281 @@ def congested_times(sim_result: SimulationResult) -> float:
 
 
 @agent_kpi("grid_demand")
-def total_demand_kwh(sim_result: SimulationResult) -> dict[str, float]:
-    total_demand_kwh = dict()
-    for sys_id, df in sim_result.agents_ts.items():
-        total_demand_kwh[sys_id] = df["grid"].clip(lower=0).sum()
-    return total_demand_kwh
+def total_demand_kwh(df: pd.DataFrame, dt_h: float) -> float:
+    """Total grid demand in kWh."""
+    return float(df["grid"].clip(lower=0).sum() * dt_h)
 
 
 @agent_kpi("max_grid_demand")
-def max_demand_kw(sim_result: SimulationResult) -> dict[str, float]:
-    max_demand_kw = dict()
-    for sys_id, df in sim_result.agents_ts.items():
-        max_demand_kw[sys_id] = df["grid"].clip(lower=0).max()
-    return max_demand_kw
+def max_demand_kw(df: pd.DataFrame, dt_h: float) -> float:
+    """Maximum grid demand in kW."""
+    return df["grid"].clip(lower=0).max()
 
 
 @agent_kpi("costs")
-def capacity_costs(sim_result: SimulationResult) -> dict[str, float]:
-    capacity_costs = dict()
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        demand_capacity = df["grid"].clip(lower=0)
-        c_sup = df["c_sup"]
-        capacity_costs[sys_id] = (demand_capacity * c_sup).sum() * dt_h
-    return capacity_costs
+def capacity_costs(df: pd.DataFrame, dt_h: float) -> float:
+    """Total cost based on grid demand and supply cost (c_sup)."""
+    return (df["grid"].clip(lower=0) * df["c_sup"]).sum() * dt_h
 
 
 @agent_kpi("battery_energy")
-def battery_energy(sim_result: SimulationResult) -> dict[str, float]:
-    battery_energy = dict()
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        bat_p_net = df["bat_p_net"] if "bat_p_net" in df.columns else 0.0
-        battery_energy[sys_id] = bat_p_net.clip(0).sum() * dt_h
-    return battery_energy
+def battery_energy(df: pd.DataFrame, dt_h: float) -> float:
+    """Total charged battery energy (kWh)."""
+    if "bat_p_net" in df.columns:
+        return df["bat_p_net"].clip(lower=0).sum() * dt_h
+    return 0.0
 
 
 @agent_kpi("battery_energy_from_grid")
-def bss_kwh_from_grid(sim_result: SimulationResult) -> dict[str, float]:
-    """ Total charged energy to BSS while household net load is postive. """
+def bss_kwh_from_grid(df: pd.DataFrame, dt_h: float) -> float:
+    """Total charged energy to BSS while household net load is positive."""
     warnings.warn("The math of battery_energy_from_grid does not seem right.")
-    bss_kwh_from_grid = dict()
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "bat_p_ac" in df.columns:
-            kw_from_grid = df["bat_p_ac"][df["grid"] > 0].clip(0).sum()
-            bss_kwh_from_grid[sys_id] = kw_from_grid * dt_h
-        else:
-            bss_kwh_from_grid[sys_id] = 0.0
-
-    return bss_kwh_from_grid
+    if "bat_p_ac" in df.columns:
+        kw_from_grid = df.loc[df["grid"] > 0, "bat_p_ac"].clip(lower=0).sum()
+        return kw_from_grid * dt_h
+    return 0.0
 
 
 @agent_kpi("battery_max_from_grid")
-def bss_max_kw_from_grid(sim_result: SimulationResult) -> dict[str, float]:
-    """ Maxmimal BSS charge load while household net load is postive. """
+def bss_max_kw_from_grid(df: pd.DataFrame, dt_h: float) -> float:
+    """Maximal BSS charge load while household net load is positive."""
     warnings.warn("The math of battery_max_from_grid does not seem right.")
-    bss_max_kw_from_grid = dict()
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "bat_p_ac" in df.columns:
-            kw_from_grid = df["bat_p_ac"][df["grid"] > 0].clip(0)
-            bss_max_kw_from_grid[sys_id] = kw_from_grid.max()
-        else:
-            bss_max_kw_from_grid[sys_id] = float("nan")
-    return bss_max_kw_from_grid
+    if "bat_p_ac" in df.columns:
+        kw_from_grid = df.loc[df["grid"] > 0, "bat_p_ac"].clip(lower=0)
+        return kw_from_grid.max()
+    return float("nan")
 
 
 @agent_kpi("battery_energy_to_grid")
-def battery_energy_to_grid(sim_result: SimulationResult) -> dict[str, float]:
-    """ Total discharged energy of BSS while household net load is negative."""
+def battery_energy_to_grid(df: pd.DataFrame, dt_h: float) -> float:
+    """Total discharged energy of BSS while household net load is negative."""
     warnings.warn("The math of battery_energy_to_grid does not seem right.")
-    battery_energy_to_grid = dict()
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "bat_p_ac" in df.columns:
-            kw_to_grid = (-df["bat_p_ac"])[df["grid"] < 0].clip(0).sum()
-            battery_energy_to_grid[sys_id] = kw_to_grid * dt_h
-        else:
-            battery_energy_to_grid[sys_id] = 0.0
-    return battery_energy_to_grid
+    if "bat_p_ac" in df.columns:
+        kw_to_grid = (-df["bat_p_ac"])[df["grid"] < 0].clip(lower=0).sum()
+        return kw_to_grid * dt_h
+    return 0.0
 
 
 @agent_kpi("battery_max_to_grid")
-def battery_max_to_grid(sim_result: SimulationResult) -> dict[str, float]:
-    """ Maxmimal BSS discharge load while household net load is negative. """
+def battery_max_to_grid(df: pd.DataFrame, dt_h: float) -> float:
+    """Maximal BSS discharge load while household net load is negative."""
     warnings.warn("The math of battery_max_to_grid does not seem right.")
-    bss_max_kw_to_grid = dict()
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "bat_p_ac" in df.columns:
-            kw_to_grid = (-df["bat_p_ac"])[df["grid"] > 0].clip(0)
-            bss_max_kw_to_grid[sys_id] = kw_to_grid.max()
-        else:
-            bss_max_kw_to_grid[sys_id] = float("nan")
-    return bss_max_kw_to_grid
+    if "bat_p_ac" in df.columns:
+        kw_to_grid = (-df["bat_p_ac"])[df["grid"] < 0].clip(lower=0)
+        return kw_to_grid.max()
+    return float("nan")
+
 
 @agent_kpi("overcharge_bat")
-def overcharge_bat(sim_result: SimulationResult) -> dict[str, float]:
-    overcharge_bat = dict()
-    for sys_id, df in sim_result.agents_ts.items():
-        if "bat_soc" in df.columns:
-            overcharge_bat[sys_id] = (df["bat_soc"] > 1.0).sum()
-        else:
-            overcharge_bat[sys_id] = 0.0
-    return overcharge_bat
+def overcharge_bat(df: pd.DataFrame, dt_h: float) -> float:
+    """Count of time steps where battery SOC exceeds 1.0."""
+    if "bat_soc" in df.columns:
+        return float((df["bat_soc"] > 1.0).sum())
+    return 0.0
 
 
 @agent_kpi("undercharge_bat")
-def undercharge_bat(sim_result: SimulationResult) -> dict[str, float]:
-    undercharge_bat = dict()
-    for sys_id, df in sim_result.agents_ts.items():
-        if "bat_soc" in df.columns:
-            undercharge_bat[sys_id] = float((df["bat_soc"] < 0.0).sum())
-        else:
-            undercharge_bat[sys_id] = 0.0
-    return undercharge_bat
+def undercharge_bat(df: pd.DataFrame, dt_h: float) -> float:
+    """Count of time steps where battery SOC drops below 0.0."""
+    if "bat_soc" in df.columns:
+        return float((df["bat_soc"] < 0.0).sum())
+    return 0.0
 
 
 @agent_kpi("charging_cycle_equivalents")
-def equivalent_full_charge_cycles(sim_result: SimulationResult) -> dict[str, float]:
-    """ Here some explanations would be really nice. """
-    full_charge_cycles = dict()
-    for sys_id, df in sim_result.agents_ts.items():
-        if "bat_soc" in df.columns and df["bat_soc"].size >= 2:
-            diff = np.diff(df["bat_soc"])
-            full_charge_cycles[sys_id] = float(diff[diff > 0].sum())
-        else:
-            full_charge_cycles[sys_id] = float("nan")
-    return full_charge_cycles
+def equivalent_full_charge_cycles(df: pd.DataFrame, dt_h: float) -> float:
+    """Approximate equivalent full charge cycles based on SOC increases."""
+    if "bat_soc" in df.columns and len(df["bat_soc"]) >= 2:
+        diff = np.diff(df["bat_soc"])
+        # Sum of all positive SOC changes represents charged fraction (in full cycles)
+        return float(diff[diff > 0].sum())
+    return float("nan")
 
 
 @agent_kpi("mean_temp")
-def mean_temperature(sim_result: SimulationResult) -> dict[str, float]:
+def mean_temperature(df: pd.DataFrame, dt_h: float) -> float:
     """Average indoor temperature of the building."""
-    mean_temperature = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        if "hp_temp" in df.columns:
-            mean_temperature[sys_id] = float(df["hp_temp"].mean())
-        else:
-            mean_temperature[sys_id] = float("nan")
-    return mean_temperature
+    if "hp_temp" in df.columns:
+        return float(df["hp_temp"].mean())
+    return float("nan")
 
 
 @agent_kpi("hp_energy_el")
-def hp_energy_el(sim_result: SimulationResult) -> dict[str, float]:
-    """Total electrical energy consumed by the heat pump."""
-    hp_energy_el = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "hp_p_in" in df.columns:
-            hp_energy_el[sys_id] = df["hp_p_in"].sum() * dt_h
-        else:
-            hp_energy_el[sys_id] = 0.0
-    return hp_energy_el
+def hp_energy_el(df: pd.DataFrame, dt_h: float) -> float:
+    """Total electrical energy consumed by the heat pump (kWh)."""
+    if "hp_p_in" in df.columns:
+        return float(df["hp_p_in"].sum() * dt_h)
+    return 0.0
 
 
 @agent_kpi("hp_p_max")
-def hp_p_max(sim_result: SimulationResult) -> dict[str, float]:
-    """Maximum electrical input power of the heat pump."""
-    hp_p_max = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        if "hp_p_in" in df.columns > 0:
-            hp_p_max[sys_id] = df["hp_p_in"].max()
-        else:
-            hp_p_max[sys_id] = float("nan")
-    return hp_p_max
+def hp_p_max(df: pd.DataFrame, dt_h: float) -> float:
+    """Maximum electrical input power of the heat pump (kW)."""
+    if "hp_p_in" in df.columns:
+        return float(df["hp_p_in"].max())
+    return float("nan")
 
 
 @agent_kpi("overheating")
-def overheating(sim_result: SimulationResult) -> dict[str, float]:
+def overheating(df: pd.DataFrame, dt_h: float) -> float:
     """Number of timesteps where the heat pump temperature exceeded 23°C."""
-    overheating = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        if "hp_temp" in df.columns:
-            overheating[sys_id] = float((df["hp_temp"] > 23).sum())
-        else:
-            overheating[sys_id] = 0.0
-    return overheating
+    if "hp_temp" in df.columns:
+        return float((df["hp_temp"] > 23).sum())
+    return 0.0
 
 
 @agent_kpi("underheating")
-def underheating(sim_result: SimulationResult) -> dict[str, float]:
+def underheating(df: pd.DataFrame, dt_h: float) -> float:
     """Number of timesteps where the heat pump temperature was below 18°C."""
-    underheating = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        if "hp_temp" in df.columns:
-            underheating[sys_id] = float((df["hp_temp"] < 18).sum())
-        else:
-            underheating[sys_id] = 0.0
-    return underheating
+    if "hp_temp" in df.columns:
+        return float((df["hp_temp"] < 18).sum())
+    return 0.0
 
 
 @agent_kpi("above_t")
-def above_t(sim_result: SimulationResult) -> dict[str, float]:
-    """Alias metric for overheating (timesteps above temperature threshold)."""
-    return overheating(sim_result)
+def above_t(df: pd.DataFrame, dt_h: float) -> float:
+    """Alias for overheating."""
+    return overheating(df, dt_h)
 
 
 @agent_kpi("under_t")
-def under_t(sim_result: SimulationResult) -> dict[str, float]:
-    """Alias metric for underheating (timesteps below temperature threshold)."""
-    return underheating(sim_result)
+def under_t(df: pd.DataFrame, dt_h: float) -> float:
+    """Alias for underheating."""
+    return underheating(df, dt_h)
 
 
 @agent_kpi("ev_energy")
-def ev_energy(sim_result: SimulationResult) -> dict[str, float]:
+def ev_energy(df: pd.DataFrame, dt_h: float) -> float:
     """Total electrical energy charged into the EV (from all sources)."""
-    ev_energy = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "ev_p_net" in df.columns:
-            ev_energy[sys_id] = float(df["ev_p_net"].clip(lower=0).sum() * dt_h)
-        else:
-            ev_energy[sys_id] = 0.0
-    return ev_energy
+    if "ev_p_net" in df.columns:
+        return float(df["ev_p_net"].clip(lower=0).sum() * dt_h)
+    return 0.0
 
 
 @agent_kpi("ev_energy_from_grid")
-def ev_energy_from_grid(sim_result: SimulationResult) -> dict[str, float]:
+def ev_energy_from_grid(df: pd.DataFrame, dt_h: float) -> float:
     """Energy charged into the EV that originated from the grid."""
-    ev_energy_from_grid = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "ev_p_ac" in df.columns:
-            from_grid = (df["ev_p_net"] > 0) & (df["grid"] > 0)
-            df[from_grid, "ev_p_ac"].sum() * dt_h
-            ev_energy_from_grid[sys_id] = df[from_grid, "ev_p_ac"].sum() * dt_h
-        else:
-            ev_energy_from_grid[sys_id] = 0.0
-    return ev_energy_from_grid
+    if "ev_p_ac" in df.columns:
+        mask = (df["ev_p_net"] > 0) & (df["grid"] > 0)
+        return float(df.loc[mask, "ev_p_ac"].clip(lower=0).sum() * dt_h)
+    return 0.0
 
 
 @agent_kpi("ev_max_from_grid")
-def ev_max_from_grid(sim_result: SimulationResult) -> dict[str, float]:
+def ev_max_from_grid(df: pd.DataFrame, dt_h: float) -> float:
     """Maximum EV charging power drawn from the grid."""
-    ev_max_from_grid = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        if "ev_p_ac" in df.columns:
-            from_grid = (df["ev_p_net"] > 0) & (df["grid"] > 0)
-            if from_grid.any():
-                ev_max_from_grid[sys_id] = df[from_grid, "ev_p_ac"].max()
-            else:
-                ev_max_from_grid[sys_id] = float("nan")
-        else:
-            ev_max_from_grid[sys_id] = float("nan")
-
-    return ev_max_from_grid
+    if "ev_p_ac" in df.columns:
+        mask = (df["ev_p_net"] > 0) & (df["grid"] > 0)
+        return float(df.loc[mask, "ev_p_ac"].clip(lower=0).max())
+    return float("nan")
 
 
 @agent_kpi("ev_energy_to_grid")
-def ev_energy_to_grid(sim_result: SimulationResult) -> dict[str, float]:
+def ev_energy_to_grid(df: pd.DataFrame, dt_h: float) -> float:
     """Energy discharged from the EV back to the grid (V2G)."""
-    ev_energy_to_grid = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "ev_p_ac" in df.columns:
-            from_grid = (-df["ev_p_net"] > 0) & (-df["grid"] > 0)
-            df[from_grid, "ev_p_ac"].sum() * dt_h
-            ev_energy_to_grid[sys_id] = -df[from_grid, "ev_p_ac"].sum() * dt_h
-        else:
-            ev_energy_to_grid[sys_id] = 0.0
-    return ev_energy_to_grid
+    if "ev_p_ac" in df.columns:
+        mask = (df["ev_p_net"] < 0) & (df["grid"] < 0)
+        return float((-df.loc[mask, "ev_p_ac"]).clip(lower=0).sum() * dt_h)
+    return 0.0
 
 
 @agent_kpi("overcharge_ev")
-def overcharge_ev(sim_result: SimulationResult) -> dict[str, float]:
+def overcharge_ev(df: pd.DataFrame, dt_h: float) -> float:
     """Number of timesteps where the EV SoC exceeded 100%."""
-    overcharge_ev = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        if "ev_soc" in df.columns:
-            overcharge_ev[sys_id] = float((df["ev_soc"] > 1.0).sum())
-        else:
-            overcharge_ev[sys_id] = 0.0
-    return overcharge_ev
+    if "ev_soc" in df.columns:
+        return float((df["ev_soc"] > 1.0).sum())
+    return 0.0
 
 
 @agent_kpi("undercharge_ev")
-def undercharge_ev(sim_result: SimulationResult) -> dict[str, float]:
+def undercharge_ev(df: pd.DataFrame, dt_h: float) -> float:
     """Number of timesteps where the EV SoC dropped below 0%."""
-    undercharge_ev = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        if "ev_soc" in df.columns:
-            undercharge_ev[sys_id] = float((df["ev_soc"] < 0.0).sum())
-        else:
-            undercharge_ev[sys_id] = 0.0
-    return undercharge_ev
+    if "ev_soc" in df.columns:
+        return float((df["ev_soc"] < 0.0).sum())
+    return 0.0
 
 
 @agent_kpi("total_import")
-def total_import(sim_result: SimulationResult) -> dict[str, float]:
+def total_import(df: pd.DataFrame, dt_h: float) -> float:
     """Total electrical energy imported from the grid [kWh]."""
-    total_import = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        total_import[sys_id] = df["grid"].clip(0).sum() * dt_h
-    return total_import
+    return float(df["grid"].clip(lower=0).sum() * dt_h)
 
 
 @agent_kpi("max_import")
-def max_import(sim_result: SimulationResult) -> dict[str, float]:
+def max_import(df: pd.DataFrame, dt_h: float) -> float:
     """Maximum grid import power [kW]."""
-    max_import = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        max_import[sys_id] = df["grid"][df["grid"] > 0].max()
-
-    return max_import
+    return float(df["grid"].clip(lower=0).max())
 
 
 @agent_kpi("total_feed")
-def total_feed(sim_result: SimulationResult) -> dict[str, float]:
+def total_feed(df: pd.DataFrame, dt_h: float) -> float:
     """Total energy exported to the grid [kWh]."""
-    total_feed = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        total_feed[sys_id] = (-df["grid"]).clip(0).sum() * dt_h
-    return total_feed
+    return float((-df["grid"]).clip(lower=0).sum() * dt_h)
 
 
 @agent_kpi("max_feed")
-def max_feed(sim_result: SimulationResult) -> dict[str, float]:
-    """ Maximum export power magnitude [kW]."""
-    max_feed = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        max_feed[sys_id] = (-df["grid"])[df["grid"] < 0].max()
-
-    return max_feed
+def max_feed(df: pd.DataFrame, dt_h: float) -> float:
+    """Maximum export power magnitude [kW]."""
+    return float((-df["grid"]).clip(lower=0).max())
 
 
 @agent_kpi("energy_consumption")
-def energy_consumption(sim_result: SimulationResult) -> dict[str, float]:
+def energy_consumption(df: pd.DataFrame, dt_h: float) -> float:
     """Total energy consumed by all systems and electric load [kWh]."""
-    energy_consumption = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        base_load = df["p_el_load"].sum() if "p_el_load" in df.columns else 0.0
-        hp = df["hp_p_in"].clip(0).sum() if "hp_p_in" in df.columns else 0.0
-        ev = df["ev_p_net"].clip(0).sum() if "ev_p_net" in df.columns else 0.0
-        energy_consumption[sys_id] = base_load + hp + ev * dt_h
-    return energy_consumption
+    base_load = df["p_el_load"].clip(lower=0).sum() if "p_el_load" in df.columns else 0.0
+    hp = df["hp_p_in"].clip(lower=0).sum() if "hp_p_in" in df.columns else 0.0
+    ev = df["ev_p_net"].clip(lower=0).sum() if "ev_p_net" in df.columns else 0.0
+    return float((base_load + hp + ev) * dt_h)
 
 
 @agent_kpi("self_consumption")
-def self_consumption(sim_result: SimulationResult) -> dict[str, float]:
+def self_consumption(df: pd.DataFrame, dt_h: float) -> float:
     """PV generation used on-site [kWh]."""
-    self_consumption = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "p_el_pv" in df.columns:
-            pv_gen = float(df.loc[df["p_el_pv"] > 0, "p_el_pv"].sum() * dt_h)
-            export = float((-df.loc[df["grid"] < 0, "grid"]).sum() * dt_h)
-            self_consumption[sys_id] = max(0.0, pv_gen - export)
-        else:
-            self_consumption[sys_id] = 0.0
-    return self_consumption
+    if "p_el_pv" not in df.columns:
+        return 0.0
+    pv_gen = float(df.loc[df["p_el_pv"] > 0, "p_el_pv"].sum() * dt_h)
+    export = float((-df.loc[df["grid"] < 0, "grid"]).sum() * dt_h)
+    return max(0.0, pv_gen - export)
 
 
 @agent_kpi("self_sufficiency")
-def self_sufficiency(sim_result: SimulationResult) -> dict[str, float]:
-    """ Ratio of total demand covered by local PV generation."""
-    self_sufficiency = {}
-    # Here only inflexible load was considered - why?
-    consumption = energy_consumption(sim_result)
-    for sys_id, df in sim_result.agents_ts.items():
-        self_sufficiency[sys_id] = self_consumption[sys_id] / consumption[sys_id]
-    return self_sufficiency
+def self_sufficiency(df: pd.DataFrame, dt_h: float) -> float:
+    """Ratio of total demand covered by local PV generation."""
+    if energy_consumption(df, dt_h) <= 0:
+        return 0.0
+    return self_consumption(df, dt_h) / energy_consumption(df, dt_h)
 
 
 @agent_kpi("costs")
-def costs(sim_result: SimulationResult) -> dict[str, float]:
-    """Total cost of electricity purchased from the grid."""
-    results = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if {"grid", "c_sup"}.issubset(df.columns):
-            values = (df["grid"] * df["c_sup"]).where(df["grid"] >= 0, 0.0)
-            results[sys_id] = float(values.sum() * dt_h)
-        else:
-            results[sys_id] = 0.0
-    return results
+def costs(df: pd.DataFrame, dt_h: float) -> float:
+    """Total cost of electricity purchased from the grid [€]."""
+    if {"grid", "c_sup"}.issubset(df.columns):
+        # only positive grid values (imports)
+        values = (df["grid"] * df["c_sup"]).where(df["grid"] >= 0, 0.0)
+        return float(values.sum() * dt_h)
+    return 0.0
 
 
 @agent_kpi("revenue")
-def revenue(sim_result: SimulationResult) -> dict[str, float]:
-    """ Revenue from energy exported to the grid."""
-    revenue = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "c_feed" in df.columns:
-            revenues = (-df["grid"]).clip(0) * df["c_feed"]
-            revenue[sys_id] = revenues.sum() * dt_h
-        else:
-            revenue[sys_id] = 0.0
-    return revenue
+def revenue(df: pd.DataFrame, dt_h: float) -> float:
+    """Revenue from energy exported to the grid [€]."""
+    if {"grid", "c_feed"}.issubset(df.columns):
+        # only negative grid values (exports)
+        revenues = (-df["grid"]).clip(lower=0) * df["c_feed"]
+        return float(revenues.sum() * dt_h)
+    return 0.0
 
 
 @agent_kpi("profit")
-def profit(sim_result: SimulationResult) -> dict[str, float]:
+def profit(df: pd.DataFrame, dt_h: float) -> float:
     """Net profit from energy trading: revenue minus costs [€]."""
-    profit = {}
-    dt_h = sim_result.dt_h
-    for sys_id, df in sim_result.agents_ts.items():
-        if "c_feed" in df.columns:
-            profit[sys_id] = revenue[sys_id] - costs[sys_id]
-        else:
-            profit[sys_id] = 0.0
-    return profit
+    return revenue(df, dt_h) - costs(df, dt_h)
 
 
 @agent_kpi("net_grid_energy")
-def net_grid_energy(sim_result: SimulationResult) -> dict[str, float]:
+def net_grid_energy(df: pd.DataFrame, dt_h: float) -> float:
     """Net energy balance with the grid: imports minus exports [kWh]."""
-    net_grid_energy = {}
-    for sys_id, df in sim_result.agents_ts.items():
-        net_grid_energy[sys_id] = total_import[sys_id] - total_feed[sys_id]
-    return net_grid_energy
+    return total_import(df, dt_h) - total_feed(df, dt_h)
 
 
 AGENT_KPI_FIELDS = {
