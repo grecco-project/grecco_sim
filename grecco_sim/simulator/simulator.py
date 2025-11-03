@@ -145,8 +145,10 @@ class Simulator(object):
         self.execution_time = time.time() - start_time
 
     def get_sim_result(
-        self, opt_pars: type_defs.OptParameters, grid_pars: type_defs.GridDescription
-    ) -> result.SimulationResult:
+        self,
+        opt_pars: type_defs.OptParameters,
+        grid_pars: type_defs.GridDescription) -> result.SimulationResult:
+
         """Access simulation results."""
 
         sys_pars = dict()

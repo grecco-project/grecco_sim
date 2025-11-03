@@ -362,9 +362,8 @@ def self_sufficiency(df: pd.DataFrame, dt_h: float) -> float:
 
 @agent_kpi("costs")
 def costs(df: pd.DataFrame, dt_h: float) -> float:
-    """Total cost of electricity purchased from the grid [€]."""
-    if {"grid", "c_sup"}.issubset(df.columns):
-        # only positive grid values (imports)
+    """Total cost of electricity purchased from the grid ."""
+    if "c_sup" in df.columns:
         values = (df["grid"] * df["c_sup"]).where(df["grid"] >= 0, 0.0)
         return float(values.sum() * dt_h)
     return 0.0
@@ -372,7 +371,7 @@ def costs(df: pd.DataFrame, dt_h: float) -> float:
 
 @agent_kpi("revenue")
 def revenue(df: pd.DataFrame, dt_h: float) -> float:
-    """Revenue from energy exported to the grid [€]."""
+    """Revenue from energy exported to the grid ."""
     if {"grid", "c_feed"}.issubset(df.columns):
         # only negative grid values (exports)
         revenues = (-df["grid"]).clip(lower=0) * df["c_feed"]
@@ -382,7 +381,7 @@ def revenue(df: pd.DataFrame, dt_h: float) -> float:
 
 @agent_kpi("profit")
 def profit(df: pd.DataFrame, dt_h: float) -> float:
-    """Net profit from energy trading: revenue minus costs [€]."""
+    """Net profit from energy trading: revenue minus costs ."""
     return revenue(df, dt_h) - costs(df, dt_h)
 
 
@@ -390,41 +389,6 @@ def profit(df: pd.DataFrame, dt_h: float) -> float:
 def net_grid_energy(df: pd.DataFrame, dt_h: float) -> float:
     """Net energy balance with the grid: imports minus exports [kWh]."""
     return total_import(df, dt_h) - total_feed(df, dt_h)
-
-
-AGENT_KPI_FIELDS = {
-    "grid_demand",
-    "energy_consumption",
-    "max_grid_demand",
-    "total_feed",
-    "max_feed",
-    "self-consumption",
-    "self-sufficiency",
-    "charging_cycle_equivalents",
-    "battery_energy",
-    "battery_energy_from_grid",
-    "battery_max_from_grid",
-    "battery_energy_to_grid",
-    "battery_max_to_grid",
-    "costs",
-    "profit",
-    "revenue",
-    "overcharge_bat",
-    "undercharge_bat",
-    "hp_energy_el",
-    "hp_p_max",
-    "mean_temp",
-    "overheating",
-    "underheating",
-    "above_t",
-    "under_t",
-    "ev_energy",
-    "ev_energy_from_grid",
-    "ev_max_from_grid",
-    "ev_energy_to_grid",
-    "overcharge_ev",
-    "undercharge_ev",
-}
 
 
 def _write_to_files(

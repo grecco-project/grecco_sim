@@ -200,7 +200,7 @@ def get_csv_delimiter(file_path):
 
 def load_pickled_grid(
     pickle_name: str, dt_h: datetime.timedelta, network_dir: Path, ev_capacity_data: Optional[Path]
-) -> pypsa.Network:
+) -> grid.Grid:
     """Pickling avoids repetition of costly Grid object creation.
 
     pickle_name: The identifier of the pickle file.

@@ -1,12 +1,11 @@
 import pandas as pd
 
 from grecco_sim.coordinators import coord_base
-from grecco_sim.util import type_defs
 from grecco_sim import coordinators
 
 from grecco_sim.simulator import sim_input
 from grecco_sim.util.type_defs import RunParameters
-from grecco_sim.util import logger, data_io
+from grecco_sim.util import logger, data_io, type_defs, result
 
 from grecco_sim.simulator import simulator
 from grecco_sim.sim_models import grid_node
@@ -155,7 +154,14 @@ class SimulationSetup(object):
         # Evaluate simulation.
         network_kpis, agent_kpis = evaluate_kpis(sim_result)
         eval_results = simulation_eval.evaluate_sim(sim_result)
+        grid_path = self.run_pars.scenario["grid_data_path"]
+        network_with_loads = result.map_result_to_pypsa(grid_path, sim_result)
         # ToDo: Discuss with Rebecca if flex analysis is needed.
+
+        # Translate results to grid.
+
+
+
 
         # Plot some results. Plotting function decides if plots must be shown based on run_pars
         plotter.make_plots(sim_result)

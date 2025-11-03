@@ -71,7 +71,6 @@ def run_simulation(
 
 
 if __name__ == "__main__":
-
     # todo: It is confusing to have a year in "start" and "year" as variable.
     #   I think we should define the variable year via "start.year"
     #   If that is not possible, leave a comment on why.
