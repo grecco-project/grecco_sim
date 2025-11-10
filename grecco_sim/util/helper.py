@@ -1,6 +1,6 @@
 import numpy as np
 from grecco_sim.util import type_defs
-
+import re
 
 def select_futures_by_flex_type(
     futures: dict[str, type_defs.LocalFuture], flex_type: str
@@ -33,3 +33,17 @@ def get_flex_and_inflex(futures: dict[str, type_defs.LocalFuture]):
         flex_sum = inflex_sum * 0.
 
     return flex_futures, stat_futures, flex_sum, inflex_sum
+
+
+def sanitize_name(name: str) -> str:
+    """Sanitize a string to be used as a variable name.
+    This was written mainly to create valid CasADi function names.
+    """
+    # Replace anything not letter/number/underscore with underscore
+    name = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+    # Replace multiple underscores with a single one
+    name = re.sub(r'__+', '_', name)
+    # Ensure starts with a letter
+    if not re.match(r'^[A-Za-z]', name):
+        name = 'f_' + name
+    return name

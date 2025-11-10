@@ -9,6 +9,7 @@ import pypsa
 import pathlib
 import difflib
 import logging
+from grecco_sim.util import helper
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,10 @@ class Grid(object):
 
     @staticmethod
     def _sys_id(system: str, bus: int):
-        return f"bus_{bus}_load_{system}"
+        # Sanitize bus name to be used in sys_id
+        system = helper.sanitize_name(system)
+        bus_name = helper.sanitize_name(str(bus))
+        return f"bus_{bus_name}_load_{system}"
 
     def _init_variables(self):
         """

@@ -54,12 +54,15 @@ class CentralOptimizationCoordinator(coord_interface.CoordinatorInterface):
         flex_ocps = {}
         par_values = {}
         all_sys_pars = {}
+        model_confs = {}
         # Collect sys_ids of those systems that get inflexible because there is no EV charge process
         poppables = []
 
         for sys_id, future in flex_futures.items():
             sys_pars = future._meta["_model_pars"]
             all_sys_pars[sys_id] = sys_pars
+            model_confs[sys_id] = solver_common.dict_to_model_conf(sys_pars)
+            # model_conf = tuple(sys for sys in model_conf)
 
             charge_processes = {
                 flex_id: phys_common.get_charge_process(
@@ -72,25 +75,25 @@ class CentralOptimizationCoordinator(coord_interface.CoordinatorInterface):
                 key: val for key, val in charge_processes.items() if val is not None
             }
 
-            ocp, grid_var = ocp_all_flex.get_ocp(
+            flex_ocps[sys_id] = ocp_all_flex.get_ocp(
                 sys_id, current_horizon, sys_pars, self.opt_pars, charge_processes
             )
 
             par_values[sys_id] = solver_common.get_par_values_arbitrary_naming(
                 sys_pars, future._meta["state"], future._meta["fc"]
             )
-
+        
+        
         # for sys_id in poppables:
         # inflex_sum += flex_futures[sys_id].yg
         # inflex_futures[sys_id] = flex_futures.pop(sys_id)
 
         nlp_solver = _combine(flex_ocps, inflex_sum, self.grid, self.opt_pars)
 
-        res = _solve(nlp_solver, par_values, current_horizon)
+        res = _solve(nlp_solver, par_values, model_confs, current_horizon)
         if False:
             import matplotlib.pyplot as plt
 
-            plt.plot(inflex_sum)
             flex_sol = np.array([ag_res["yk"] for ag_res in res.values()]).sum(axis=0)
             plt.plot(flex_sol)
             plt.plot(flex_sol + inflex_sum)
@@ -191,7 +194,7 @@ def _combine(
     return mycas.MyNLPSolver(central_ocp, solver=opt_pars.solver_name)
 
 
-def _solve(solver: mycas.MyNLPSolver, par_sets: dict[str, dict], horizon):
+def _solve(solver: mycas.MyNLPSolver, par_sets: dict[str, dict], model_confs, horizon):
 
     par_values = {
         f"{ag_tag}_{par_name}": par_sets[ag_tag][par_name]
@@ -223,7 +226,7 @@ def _get_agent_solution(
         ret[f"{sys_id}_bat"] = bat_control
 
     if "hp" in model_conf:
-        hp_control = solver.opt_vector(f"p_el_hp_{sys_id}")
+        hp_control = solver.opt_vector(f"{sys_id}_hp_temp")
         ret[f"{sys_id}_hp"] = hp_control
 
     if "ev" in model_conf:

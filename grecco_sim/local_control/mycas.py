@@ -6,6 +6,7 @@ import os
 import dataclasses
 import typing
 import warnings
+import re
 
 import casadi
 import numpy as np
@@ -382,8 +383,12 @@ class MyNLPSolver:
     def get_custom_function_value(self, func_name: str):
         if self.sol is None:
             raise ValueError("solve OCP first before accessing solution!")
+        
+        unique_id = re.search(r'HA_Kasten_(\d+)_', func_name).group(1)
+        matches = [k for k in self._custom_functions.keys() if f'_{unique_id}_' in k]
+        func_name_corrected = matches[0] # if #matches else func_name
 
-        return self._custom_functions[func_name](self.sol["x"], self._p_vec).full()
+        return self._custom_functions[func_name_corrected](self.sol["x"], self._p_vec).full()
 
     def opt_gradient(self, func_name: str, wrt_var_name: str) -> np.ndarray:
         """
