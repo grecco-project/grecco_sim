@@ -4,11 +4,6 @@ import os
 import datetime
 from contextlib import contextmanager
 from typing import Any
-
-# from wurlitzer import pipes
-import io
-
-
 import pandas as pd
 
 
@@ -19,57 +14,37 @@ def show_output():
     return
 
 
-"""@contextmanager
-def suppress_stdout():
-    buf = io.StringIO()
-    with open(os.devnull, "w") as devnull:
-        with pipes(stdout=buf, stderr=buf):
-            old_stdout = sys.stdout
-            sys.stdout = devnull
-            try:
-                yield
-            finally:
-                sys.stdout = old_stdout
-"""
+def _redirect_stdout(to):
+    old_fd = os.dup(sys.stdout.fileno())  # copy current stdout FD
+    os.dup2(to.fileno(), sys.stdout.fileno())  # point stdout to file
+    return old_fd
 
 
 @contextmanager
 def suppress_output(to=os.devnull):
-    """
-    usage:
-
-    import os
-
-    with stdout_redirected(to=filename):
-        print("from Python")
-        os.system("echo non-Python applications are also supported")
-    """
-    if "pytest" in sys.modules or sys.platform not in ["linux", "linux2"]:
-        # Prevent output suppression in a test session as the filesystem operations
-        # crash in github pipelines
+    if "pytest" in sys.modules or sys.platform not in ("linux", "linux2"):
         yield
         return
 
-    fd = sys.stdout.fileno()
+    # Ziel öffnen (falls Pfad)
+    opened_here = False
+    if isinstance(to, (str, os.PathLike)):
+        f = open(to, "w")
+        opened_here = True
+    else:
+        f = to
 
-    #### assert that Python and C stdio write using the same file descriptor
-    #### assert libc.fileno(ctypes.c_void_p.in_dll(libc, "stdout")) == fd == 1
+    saved_out = _redirect_stdout(f)
+    try:
+        yield
+    finally:
+        # Restore original stdout
+        stdout_fd = sys.__stdout__.fileno()
+        os.dup2(saved_out, stdout_fd)
+        os.close(saved_out)
 
-    def _redirect_stdout(to):
-        sys.stdout.close()  # + implicit flush()
-        os.dup2(to.fileno(), fd)  # fd writes to 'to' file
-        sys.stdout = os.fdopen(fd, "w")  # Python writes to fd
-
-    with os.fdopen(os.dup(fd), "w") as old_stdout:
-        with open(to, "w") as file:
-            _redirect_stdout(to=file)
-            file.close()
-        try:
-            yield  # allow code to be run with the redirected stdout
-        finally:
-            _redirect_stdout(to=old_stdout)  # restore stdout.
-            # buffering and flags such as
-            # CLOEXEC may be different
+        if opened_here:
+            f.close()
 
 
 def _format_print_str(
@@ -148,6 +123,28 @@ def default_printing(func):
 def set_pandas_print():
     pd.set_option("display.max_columns", 22)
     pd.set_option("display.width", 300)
+
+
+@contextmanager
+def auto_output_redirect(output_pattern):
+    with open(output_pattern, "w", buffering=1, encoding="utf-8") as f:
+        old_fd = _redirect_stdout(f)
+        try:
+            yield
+        finally:
+            # restore stdout to the duplicated original
+            os.dup2(old_fd, sys.stdout.fileno())
+            os.close(old_fd)
+
+    with open(output_pattern, "w") as f:
+        saved_out = _redirect_stdout(f)
+        try:
+            yield
+        finally:
+            # Restore original stdout
+            stdout_fd = sys.__stdout__.fileno()
+            os.dup2(saved_out, stdout_fd)
+            os.close(saved_out)
 
 
 if __name__ == "__main__":
