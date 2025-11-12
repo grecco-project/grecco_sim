@@ -45,9 +45,9 @@ class CentralOptimizationCoordinator(coord_interface.CoordinatorInterface):
     ) -> dict[str, sig_types.SignalType]:
 
         current_horizon = list(futures.values())[0].horizon
-
+        # Sums of WHAT ?
         flex_futures, inflex_futures, flex_sum, inflex_sum = helper.get_flex_and_inflex(futures)
-
+        # check flex_sum
         if (inflex_sum > self.grid.p_lim).any() and True:
             print(inflex_sum)
 
@@ -152,9 +152,12 @@ def _combine(
 
     grid_combined = 0.0
 
-    # Combine the individual OCPs
+    # Combine the individual OCPs  ## Meant for households ? or whole sys ?
     for ag_tag, (ocp, grid_var) in single_ocps.items():
 
+        if not isinstance(grid_var, mycas.MySX):
+            continue
+        
         grid_combined += grid_var.sx
 
         obj += ocp.obj

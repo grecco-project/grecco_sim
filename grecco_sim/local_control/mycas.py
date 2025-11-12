@@ -384,11 +384,14 @@ class MyNLPSolver:
         if self.sol is None:
             raise ValueError("solve OCP first before accessing solution!")
         
-        unique_id = re.search(r'HA_Kasten_(\d+)_', func_name).group(1)
-        matches = [k for k in self._custom_functions.keys() if f'_{unique_id}_' in k]
-        func_name_corrected = matches[0] # if #matches else func_name
-
-        return self._custom_functions[func_name_corrected](self.sol["x"], self._p_vec).full()
+        try:
+            return self._custom_functions[func_name](self.sol["x"], self._p_vec).full()
+        except KeyError:
+            unique_id = re.search(r'HA_Kasten_(\d+)_', func_name).group(1)
+            matches = [k for k in self._custom_functions.keys() if f'_{unique_id}_' in k]
+            func_name_corrected = matches[0] if matches else func_name
+            
+            return self._custom_functions[func_name_corrected](self.sol["x"], self._p_vec).full()
 
     def opt_gradient(self, func_name: str, wrt_var_name: str) -> np.ndarray:
         """
