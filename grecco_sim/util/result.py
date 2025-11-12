@@ -35,32 +35,25 @@ def build_result_from_files(result_dir: Path | str) -> SimulationResult:
         agent_ts_dict[sys_id] = agent_ts
 
     return SimulationResult(
-        run_pars,
-        opt_pars,
-        grid_pars,
-        agent_ts_dict,
-        assigned_grid_fees,
-        sys_pars,
-        time_index)
+        run_pars, opt_pars, grid_pars, agent_ts_dict, assigned_grid_fees, sys_pars, time_index
+    )
 
-def map_result_to_pypsa(
-        network_path: Path,
-        sim_result: SimulationResult) -> pypsa.Network:
 
-    """ Extract load data from SimulationResult and map it to pypsa.Network."""
+def map_result_to_pypsa(network_path: Path, sim_result: SimulationResult) -> pypsa.Network:
+    """Extract load data from SimulationResult and map it to pypsa.Network."""
 
     load_ts = sim_result.ts_grid
     get_bus_name = lambda x: x.split("_load")[0].split("bus_")[1]
     load_ts.rename(axis=1, mapper=get_bus_name)
     network = pypsa.Network(network_path, snapshots=load_ts.index)
     network.buses_t["p_set"] = load_ts
-    network.lpf()
-    network.pf(use_seed=True)
+    #    network.lpf()
+    #    network.pf(use_seed=True)
 
     pass
 
     def write_loads(self, state: dict[str, dict], t: int) -> None:
-        """ Set grid state from simulation node state. """
+        """Set grid state from simulation node state."""
 
         p_set_load = dict()
         p_set_gen = dict()
@@ -110,7 +103,7 @@ def map_result_to_pypsa(
 
         # PyPSA snapshots are not localized. PyPSA loads are in MW.
         time_index = [self.time_index[t].tz_localize(None)]
-        p_set_load = pd.DataFrame(p_set_load , index=time_index) / 1000
+        p_set_load = pd.DataFrame(p_set_load, index=time_index) / 1000
         self.n.loads_t["p_set"].update(p_set_load)
 
         p_set_gen = pd.DataFrame(p_set_gen, index=time_index) / 1000

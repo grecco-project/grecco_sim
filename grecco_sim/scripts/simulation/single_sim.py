@@ -76,14 +76,14 @@ if __name__ == "__main__":
     #   If that is not possible, leave a comment on why.
 
     data_root = config.data_root()
-    year = "2033"
+    year = 2037
 
     # --- Configuration ---
     coordinators = ["none", "plain_grid_fee", "local_self_suff", "central"]
     coordinator_name = coordinators[0]
     n_days = 1
 
-    start = datetime.datetime(year=2020, month=1, day=1, hour=0)
+    start = datetime.datetime(year=2021, month=1, day=1, hour=0)
 
     ev_scenarios = [
         "_evconservative",
@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
     scenario = build_opfingen_scenario(data_root, year, ev)
 
-    sim_name = f"{coordinator_name}_{year}_hp_test"
+    sim_name = f"{coordinator_name}_{year}_input_data_test"
 
     # --- Run Simulation ---
     run_simulation(coordinator_name, start, n_days, scenario, sim_name)

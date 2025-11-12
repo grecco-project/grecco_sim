@@ -108,12 +108,8 @@ class Grid(object):
             }
         )
         self.generators["p_set"] *= 1000.0
-        self.generators = _gens.rename(
-            index={
-                i: self._sys_id(self.bus_to_load.loc[_gens.bus[i]] + "_pv", _gens.bus[i])
-                for i in _gens.index
-            }
-        )
+        if "s_nom" in self.generators.columns:
+            self.generators["s_nom"] *= 1000.0
 
         # Rename and scale heat pumps
         self.heat_pumps = _hps.rename(
