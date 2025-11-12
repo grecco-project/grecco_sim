@@ -97,7 +97,7 @@ class Simulator(object):
             signals = self.coordinator.get_signals(futures)
             market_iterations += 1
 
-        if k % 5 == 0:
+        if k % 48 == 0:
             print(
                 f"For {self.coordinator.coord_name} at k={k} needed {market_iterations} market iterations"
             )
