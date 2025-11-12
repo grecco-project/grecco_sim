@@ -456,9 +456,7 @@ def evaluate_sim(sim_result: results.SimulationResult):
     print(
         f"Mean agent analysis result for sim {sim_result.run_params.sim_tag}: {agent_stats['mean']}"
     )
-    _write_to_files(
-        sim_result.run_params, agent_stats, "agent_stats_" + sim_result.run_params.sim_tag
-    )
+    _write_to_files(sim_result.run_params, agent_stats, "agent_stats")
 
     # Reactivate if needed. However, sim_result must get a signals field
     # signal_analysis(sim_result.run_params, sim_result.agents_ts)
