@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
     # --- Configuration ---
     coordinators = ["none", "plain_grid_fee", "local_self_suff", "central"]
-    coordinator_name = coordinators[0]
+    coordinator_name = coordinators[1]
     n_days = 1
 
     start = datetime.datetime(year=2020, month=1, day=1, hour=0)

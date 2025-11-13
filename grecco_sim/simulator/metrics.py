@@ -42,6 +42,7 @@ def trafo_load(sim_result: SimulationResult) -> pd.DataFrame:
 
 @network_kpi("max_load")
 def max_load(sim_result: SimulationResult) -> float:
+    """ ToDo: Rename peak_load """
     return sim_result.ts_grid.clip(lower=0).max().max()
 
 
@@ -53,6 +54,7 @@ def dt_h(sim_result: SimulationResult) -> float:
 
 @network_kpi("max_feed")
 def max_feed(sim_result: SimulationResult) -> float:
+    """ ToDo: Rename feed_in_peak """
     return -(trafo_load(sim_result).clip(upper=0).min())
 
 
@@ -70,6 +72,7 @@ def mv_feed(sim_result: SimulationResult) -> float:
 
 @network_kpi("agg_signal")
 def total_signal_costs(sim_result: SimulationResult) -> float:
+    """ Rename: signal_sum"""
     fee_cols = [col for col in sim_result.assigned_grid_fees if "fee" in col]
     try:
         return sim_result.assigned_grid_fees[fee_cols].sum().item()
@@ -81,16 +84,19 @@ def total_signal_costs(sim_result: SimulationResult) -> float:
 
 @network_kpi("congested_load")
 def congested_load(sim_result: SimulationResult) -> float:
+    """ Rename: load_(based)_congestion_time"""
     return (trafo_load(sim_result) > sim_result.grid_pars.p_lim).sum()
 
 
 @network_kpi("congested_pv")
 def congested_pv(sim_result: SimulationResult) -> float:
+    """ Rename: pv_(based)_congestion_time"""
     return (trafo_load(sim_result) < sim_result.grid_pars.p_lim).sum()
 
 
 @network_kpi("congested_times")
 def congested_times(sim_result: SimulationResult) -> float:
+    """ Rename: congestion_time"""
     return congested_pv(sim_result) + congested_load(sim_result)
 
 
@@ -143,7 +149,7 @@ def battery_energy(df: pd.DataFrame, dt_h: float) -> float:
 @agent_kpi("battery_energy_from_grid")
 def bss_kwh_from_grid(df: pd.DataFrame, dt_h: float) -> float:
     """Total charged energy to BSS while household net load is positive."""
-    warnings.warn("The math of battery_energy_from_grid does not seem right.")
+    warnings.warn("battery_energy_from_grid is only heuristical.")
     if "bat_p_ac" in df.columns:
         kw_from_grid = df.loc[df["grid"] > 0, "bat_p_ac"].clip(lower=0).sum()
         return kw_from_grid * dt_h
@@ -153,7 +159,7 @@ def bss_kwh_from_grid(df: pd.DataFrame, dt_h: float) -> float:
 @agent_kpi("battery_max_from_grid")
 def bss_max_kw_from_grid(df: pd.DataFrame, dt_h: float) -> float:
     """Maximal BSS charge load while household net load is positive."""
-    warnings.warn("The math of battery_max_from_grid does not seem right.")
+    warnings.warn("battery_max_from_grid is only heuristical.")
     if "bat_p_ac" in df.columns:
         kw_from_grid = df.loc[df["grid"] > 0, "bat_p_ac"].clip(lower=0)
         return kw_from_grid.max()
@@ -163,7 +169,7 @@ def bss_max_kw_from_grid(df: pd.DataFrame, dt_h: float) -> float:
 @agent_kpi("battery_energy_to_grid")
 def battery_energy_to_grid(df: pd.DataFrame, dt_h: float) -> float:
     """Total discharged energy of BSS while household net load is negative."""
-    warnings.warn("The math of battery_energy_to_grid does not seem right.")
+    warnings.warn("battery_energy_to_grid is only heuristical.")
     if "bat_p_ac" in df.columns:
         kw_to_grid = (-df["bat_p_ac"])[df["grid"] < 0].clip(lower=0).sum()
         return kw_to_grid * dt_h
@@ -173,7 +179,7 @@ def battery_energy_to_grid(df: pd.DataFrame, dt_h: float) -> float:
 @agent_kpi("battery_max_to_grid")
 def battery_max_to_grid(df: pd.DataFrame, dt_h: float) -> float:
     """Maximal BSS discharge load while household net load is negative."""
-    warnings.warn("The math of battery_max_to_grid does not seem right.")
+    warnings.warn("battery_max_to_grid is only heuristical.")
     if "bat_p_ac" in df.columns:
         kw_to_grid = (-df["bat_p_ac"])[df["grid"] < 0].clip(lower=0)
         return kw_to_grid.max()
@@ -232,17 +238,17 @@ def hp_p_max(df: pd.DataFrame, dt_h: float) -> float:
 
 @agent_kpi("overheating")
 def overheating(df: pd.DataFrame, dt_h: float) -> float:
-    """Number of timesteps where the heat pump temperature exceeded 23°C."""
+    """Number of timesteps where the heat storage temperature exceeded 75°C."""
     if "hp_temp" in df.columns:
-        return float((df["hp_temp"] > 23).sum())
+        return float((df["hp_temp"] > 75).sum())
     return 0.0
 
 
 @agent_kpi("underheating")
 def underheating(df: pd.DataFrame, dt_h: float) -> float:
-    """Number of timesteps where the heat pump temperature was below 18°C."""
+    """Number of timesteps where heat storage temperature was below 60°C."""
     if "hp_temp" in df.columns:
-        return float((df["hp_temp"] < 18).sum())
+        return float((df["hp_temp"] < 60).sum())
     return 0.0
 
 

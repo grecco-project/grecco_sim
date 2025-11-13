@@ -92,14 +92,10 @@ def get_charging_data(ts_in, dt_h):
                     "end_time": x.index[-1],
                 }
             ),
-            include_groups=True,
-        )
+        ) # include_groups = True,
         .reset_index(drop=True)
     )
 
-    ts_out = pd.DataFrame(
-        index=ts_in.index, columns=["until_departure", "initial_soc", "target_soc"]
-    )
 
     # Get time steps until departure (and interpolate soc)
     for idx, row in availability.iterrows():
