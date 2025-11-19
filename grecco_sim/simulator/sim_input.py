@@ -368,10 +368,11 @@ class PyPsaGridInputLoader(InputDataLoader):
             ]  # soc
 
         # check for EV data
-        if any(sys_id in key for key in self.grid.evs.index) and self._model_evs:
-            unit_id = next((key for key in self.grid.evs.index if sys_id in key), None)
-            data_dict = self.grid.get_ev_ts()[unit_id].to_dict("series")
-            data.update(data_dict)
+        if self._model_evs:
+            matching_units = [col for col in self.grid.evs.index if sys_id in col]
+            for unit_id in matching_units:
+                data_dict = self.grid.get_ev_ts()[unit_id].to_dict("series")
+                data.update(data_dict)
 
         try:
             ts_data = pd.DataFrame()
@@ -449,26 +450,32 @@ class PyPsaGridInputLoader(InputDataLoader):
             unit_id = next((col for col in self.grid.batteries.index if sys_id in col), None)
             p_bat = self.grid.batteries.loc[unit_id, "p_nom"]
             params[unit_id] = type_defs.SysParsPVBat(
-                sys_id, c_sup=0.3, c_feed=0.1, dt_h=0.25, capacity=5, init_soc=0, p_inv=p_bat
-            )
-
-        # check if system has ev
-        if any(sys_id in col for col in self.grid.evs.index) and self._model_evs:
-            # HP initialization can only include on-off heatpumps since information from synthetic
-            # profiles is limited
-            unit_id = next((col for col in self.grid.evs.index if sys_id in col), None)
-            p_bat = self.grid.evs.loc[unit_id, "p_nom"]
-            capacity = self.grid.evs.loc[unit_id, "capacity"]
-            params[unit_id] = type_defs.SysParsEV(
                 sys_id,
                 c_sup=0.3,
                 c_feed=0.1,
                 dt_h=0.25,
-                capacity=capacity,
-                init_soc=0.5,
-                target_soc=1,
+                capacity=p_bat * 1.5,
+                init_soc=0,
                 p_inv=p_bat,
             )
+
+        # check if system has ev
+        if self._model_evs:
+            # Find all matches (not just the first one)
+            matching_units = [col for col in self.grid.evs.index if sys_id in col]
+            for unit_id in matching_units:
+                p_bat = self.grid.evs.loc[unit_id, "p_nom"]
+                capacity = self.grid.evs.loc[unit_id, "capacity"]
+                params[unit_id] = type_defs.SysParsEV(
+                    sys_id,
+                    c_sup=0.3,
+                    c_feed=0.1,
+                    dt_h=0.25,
+                    capacity=capacity,
+                    init_soc=0.5,
+                    target_soc=1,
+                    p_inv=p_bat,
+                )
         return params
         # ev_params = dict(system="ev", eff=0.9, init_soc=0.5, p_lim_dc=11., p_lim_ac=11.)
 

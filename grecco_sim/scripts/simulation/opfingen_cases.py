@@ -72,7 +72,8 @@ def select_congestion_cases(number_of_cases: int, season="", path=""):
     for i in trafo_load_sorted.index:
         congestion_cases.append(snapshots[i])
     congestion_dates = [
-        parser.parse(date).replace(hour=0, minute=0, second=0, microsecond=0).isoformat() for date in congestion_cases
+        parser.parse(date).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        for date in congestion_cases
     ]  # Start anaylsis from midnight
     return congestion_dates
 

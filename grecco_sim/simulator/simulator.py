@@ -51,7 +51,7 @@ class Simulator(object):
         obj = (self.grid_nodes, self.coordinator, k)
 
         with open(
-                self.run_pars.output_file_dir / f"coordination_state_at_k_{k}.pkl", "wb"
+            self.run_pars.output_file_dir / f"coordination_state_at_k_{k}.pkl", "wb"
         ) as pickle_file:
             pickle.dump(obj, pickle_file)
 
@@ -145,10 +145,8 @@ class Simulator(object):
         self.execution_time = time.time() - start_time
 
     def get_sim_result(
-        self,
-        opt_pars: type_defs.OptParameters,
-        grid_pars: type_defs.GridDescription) -> result.SimulationResult:
-
+        self, opt_pars: type_defs.OptParameters, grid_pars: type_defs.GridDescription
+    ) -> result.SimulationResult:
         """Access simulation results."""
 
         sys_pars = dict()
@@ -165,4 +163,5 @@ class Simulator(object):
             sys_pars=sys_pars,
             assigned_grid_fees=self.signal_ts,
             time_index=self.time_index,
-            execution_time=self.execution_time)
+            execution_time=self.execution_time,
+        )

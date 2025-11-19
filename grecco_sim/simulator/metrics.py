@@ -24,6 +24,7 @@ def network_kpi(name: str):
     def wrap(fn: NETWORK_KPI):
         NETWORK_KPIS[name] = fn
         return fn
+
     return wrap
 
 
@@ -31,12 +32,13 @@ def agent_kpi(name: str):
     def wrap(fn: AGENT_KPI):
         AGENT_KPIS[name] = fn
         return fn
+
     return wrap
 
 
 @network_kpi("trafo_load")
 def trafo_load(sim_result: SimulationResult) -> pd.DataFrame:
-    """ Sum up along agent axis to retrieve transformer load for each step. """
+    """Sum up along agent axis to retrieve transformer load for each step."""
     return float(sim_result.ts_grid.sum(axis=1))
 
 
@@ -60,13 +62,13 @@ def max_feed(sim_result: SimulationResult) -> float:
 
 @network_kpi("MV_demand")
 def mv_demand(sim_result: SimulationResult) -> float:
-    """ The total demand of power withdrawn from the MV grid. """
+    """The total demand of power withdrawn from the MV grid."""
     return trafo_load(sim_result).clip(0).sum() * sim_result.run_pars.dt_h
 
 
 @network_kpi("MV_feed")
 def mv_feed(sim_result: SimulationResult) -> float:
-    """ The total power fed-in to the MV grid. """
+    """The total power fed-in to the MV grid."""
     return (-trafo_load(sim_result)).clip(0).sum() * sim_result.run_pars.dt_h
 
 
@@ -436,8 +438,7 @@ def _write_to_files(
     eval_df.to_csv(eval_file_path)
 
 
-def evaluate_kpis(sim_result: SimulationResult) -> (
-        Tuple[pd.Series, Dict[str, Dict[str, float]]]):
+def evaluate_kpis(sim_result: SimulationResult) -> Tuple[pd.Series, Dict[str, Dict[str, float]]]:
 
     network_kpis = {}
     # Add sim_tag as id.
@@ -496,4 +497,3 @@ def evaluate_kpis(sim_result: SimulationResult) -> (
 #     }
 #
 #     return agents_res, agent_stats
-

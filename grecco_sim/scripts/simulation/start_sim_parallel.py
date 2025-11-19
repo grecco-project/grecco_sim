@@ -28,14 +28,15 @@ def main(run_name: str):
 
     # coordination_mechanisms = ["second_order", "none", "local_self_suff", "admm"]
     # coordination_mechanisms = ["plain_grid_fee", "local_self_suff"]
-    coordination_mechanisms = ["plain_grid_fee", "local_self_suff", "central_optimization", "second_order", "admm"]
+    coordination_mechanisms = [
+        "plain_grid_fee",
+        "local_self_suff",
+        "central_optimization",
+        "second_order",
+        "admm",
+    ]
 
-    base_dir = (
-        pathlib.Path(__file__).parent.parent.parent
-        / "results"
-        / "parallelized"
-        / run_name
-    )
+    base_dir = pathlib.Path(__file__).parent.parent.parent / "results" / "parallelized" / run_name
 
     run_pars = []
     opt_pars = []
@@ -45,14 +46,14 @@ def main(run_name: str):
 
         market_iterations = 5 if cm in ["admm", "second_order"] else 1
         # market_iterations = [1, 2, 3, 4, 5]
-        
+
         for fc_type in ["perfect"]:
             sim_tag = f"{cm}_fc_{fc_type}"
 
             run_pars += [
                 type_defs.RunParameters(
                     sim_horizon=96,
-                    start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.utc),
+                    start_time=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.utc),
                     max_market_iterations=market_iterations,
                     coordination_mechanism=cm,
                     scenario=OPFINGEN_SCENARIO,
@@ -60,18 +61,13 @@ def main(run_name: str):
                     plot=True,
                     show=False,
                     output_file_dir=base_dir / sim_tag,
-                    profile_run=True
+                    profile_run=True,
                 )
             ]
 
             opt_pars += [
                 type_defs.OptParameters(
-                    rho=100.0,
-                    mu=5000.0,
-                    horizon=40,
-                    alpha=1.0,
-                    solver_name="osqp",
-                    fc_type=fc_type
+                    rho=100.0, mu=5000.0, horizon=40, alpha=1.0, solver_name="osqp", fc_type=fc_type
                 )
             ]
 

@@ -1,4 +1,3 @@
-
 import pytz
 from matplotlib import pyplot as plt
 from matplotlib import dates as mdates
@@ -41,6 +40,7 @@ class LabelObject(object):
     Some objects with labels for common data series are defined below.
 
     """
+
     def __init__(self, label_dict):
         self.label_dict = label_dict
 
@@ -154,13 +154,13 @@ def plot_2d(x_axis, y_axis, data, surface_3d=True, **kwargs):
 
 def latexify():
     params = {
-        'text.latex.preamble': r"\usepackage{gensymb} \usepackage{amsmath}",
-        'axes.labelsize': 10,
-        'axes.titlesize': 10,
-        'legend.fontsize': 10,
-        'xtick.labelsize': 10,
-        'ytick.labelsize': 10,
-        'text.usetex': True,
-        'font.family': 'serif'
+        "text.latex.preamble": r"\usepackage{gensymb} \usepackage{amsmath}",
+        "axes.labelsize": 10,
+        "axes.titlesize": 10,
+        "legend.fontsize": 10,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "text.usetex": True,
+        "font.family": "serif",
     }
     mpl.rcParams.update(params)

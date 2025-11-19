@@ -18,7 +18,7 @@ def build_opfingen_scenario(
         "n_agents": 4,
         "grid_data_path": data_root / f"{year}" / f"{year}{ev_scenario}",
         "weather_data_path": data_root / f"{year}" / "weather_data.csv",
-        "ev_capacity_data_path": data_root / "synpro_ev_data_pool.csv",
+        "ev_capacity_data_path": data_root.parent / "synpro_ev_data_pool.csv",
         "heat_demand_data_path": data_root / f"{year}" / f"{year}{ev_scenario}" / "heat_demand.csv",
         "hp": True,
         "ev": True,
@@ -75,26 +75,26 @@ if __name__ == "__main__":
     #   I think we should define the variable year via "start.year"
     #   If that is not possible, leave a comment on why.
 
-    data_root = config.data_root()
-    year = 2037
+    data_root = config.data_root() / "original"
+    year = 2033
 
     # --- Configuration ---
     coordinators = ["none", "plain_grid_fee", "local_self_suff", "central"]
     coordinator_name = coordinators[1]
     n_days = 1
 
-    start = datetime.datetime(year=2021, month=1, day=1, hour=0)
+    start = datetime.datetime(year=2020, month=1, day=1, hour=0)
 
     ev_scenarios = [
         "_evconservative",
         "_evextreme",
         "",
     ]  # no difference for 2024, then either select conservative or extreme
-    ev = ev_scenarios[0]
+    ev = ev_scenarios[1]
 
     scenario = build_opfingen_scenario(data_root, year, ev)
 
-    sim_name = f"{coordinator_name}_{year}_input_data_test"
+    sim_name = f"{coordinator_name}_{year}_test_signals"
 
     # --- Run Simulation ---
     run_simulation(coordinator_name, start, n_days, scenario, sim_name)

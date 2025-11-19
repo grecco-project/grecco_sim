@@ -34,6 +34,11 @@ include = ["grecco_sim*"]
 
 [tool.black]
 line-length = 100
+exclude = ''' 
+(
+    ^/grecco_sim/coordinators/__init__.py$
+)
+'''
 
 [tool.pyright]
 include = ["grecco_sim"]

@@ -3,11 +3,11 @@
 This module provides various local controller implementations that extend LocalControllerBase:
 
 Classes:
-    LocalControllerSelfSuff: Implements self-sufficiency optimization without 
+    LocalControllerSelfSuff: Implements self-sufficiency optimization without
         considering grid constraints
-    LocalControllerEVBaseline: Basic controller for EV charging that charges at maximum 
+    LocalControllerEVBaseline: Basic controller for EV charging that charges at maximum
         power when connected
-    LocalControllerHeatPumpOnOff: Controls heat pump operation based on temperature bounds 
+    LocalControllerHeatPumpOnOff: Controls heat pump operation based on temperature bounds
         with on/off control
     LocalControllerNoControl: Simple pass-through controller for systems without controllable
         loads that always returns 0.0

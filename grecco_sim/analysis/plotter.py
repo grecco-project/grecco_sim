@@ -69,9 +69,7 @@ def make_plots(
         pass
 
 
-def _plot_grid(
-    ts_grid: pd.DataFrame, meta_inf: PlottingMetaInf, run_pars: type_defs.RunParameters
-):
+def _plot_grid(ts_grid: pd.DataFrame, meta_inf: PlottingMetaInf, run_pars: type_defs.RunParameters):
     """Plot the grid time series with combined and individual agents."""
     fig, ax = style.styled_plot(
         xlabel="Time",
@@ -151,10 +149,10 @@ def _plot_hps(
             if _label == "Agents":
                 _label = None
             # ax.plot(ts_hp.index, sum_hp, label="All heat pumps", drawstyle="steps-post", color="black")
-    if meta_inf.sim_tag not in ["local_self_suff", "none"]:
+    if not (("none" not in meta_inf.sim_tag) or ("local_self_suff" not in meta_inf.sim_tag)):
         ax.plot(
             ts_signals.index,
-            ts_signals["signal"] * 10,
+            # ts_signals["signal"] * 10,
             label="Signal",
             drawstyle="steps-post",
             color="black",
@@ -218,7 +216,7 @@ def _plot_signals(ts_signals: pd.DataFrame, meta_inf: PlottingMetaInf):
             color=meta_inf.color_list[i],
         )
 
-    if meta_inf.sim_tag not in ["local_self_suff", "none"]:
+    if not (("none" not in meta_inf.sim_tag) or ("local_self_suff" not in meta_inf.sim_tag)):
         ax.plot(
             ts_signals.index,
             ts_signals["signal"],
@@ -311,7 +309,7 @@ def _plot_flex_nodes(
         ax.legend(
             loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=4, fontsize="small", frameon=False
         )
-    if meta_inf.sim_tag not in ["local_self_suff", "none"]:
+    if not (("none" not in meta_inf.sim_tag) or ("local_self_suff" not in meta_inf.sim_tag)):
         ax.plot(
             ts_signals.index,
             ts_signals["signal"] * 10,

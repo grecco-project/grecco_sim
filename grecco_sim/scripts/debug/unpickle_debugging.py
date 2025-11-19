@@ -18,7 +18,9 @@ def market_clearing(pickled_file_name):
 
     # Get initial schedule of connected nodes without any central signal
     initial_futures = {
-        node.sys_id: node.get_current_future(k, coordinator.horizon, coordinator.get_initial_signal())
+        node.sys_id: node.get_current_future(
+            k, coordinator.horizon, coordinator.get_initial_signal()
+        )
         for node in grid_nodes
     }
 
@@ -30,14 +32,12 @@ def market_clearing(pickled_file_name):
     max_market_iterations = 25
 
     market_iterations = 1
-    while (
-        not coordinator.has_converged(k)
-        and market_iterations <= max_market_iterations
-    ):
+    while not coordinator.has_converged(k) and market_iterations <= max_market_iterations:
         print(market_iterations)
         # Multiprocessing way to get futures is slower
         futures = {
-            node.sys_id: node.get_current_future(k, coordinator.horizon, signals[node.sys_id]) for node in grid_nodes
+            node.sys_id: node.get_current_future(k, coordinator.horizon, signals[node.sys_id])
+            for node in grid_nodes
         }
 
         # This function should update if the market has converged
@@ -45,7 +45,9 @@ def market_clearing(pickled_file_name):
         # viols += [coordinator.constraint_value]
         market_iterations += 1
 
-    fig, ax = style.styled_plot(title="Constraint Violations", ylabel="Average violation / kW", figsize = "landscape")
+    fig, ax = style.styled_plot(
+        title="Constraint Violations", ylabel="Average violation / kW", figsize="landscape"
+    )
     ax.plot(viols)
     plt.show()
 

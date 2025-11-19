@@ -493,8 +493,9 @@ def evaluate_sim(sim_result: result.SimulationResult) -> Dict[str, Any]:
     agg_series = _get_aggregated_ts_result(sim_result)
 
     # Flex analysis (Series)
-    flex_series = flex_analysis(sim_result.agents_ts, sim_result.sys_pars,
-                                float(agg_series["dt_h"]))  # type: ignore[arg-type]
+    flex_series = flex_analysis(
+        sim_result.agents_ts, sim_result.sys_pars, float(agg_series["dt_h"])
+    )  # type: ignore[arg-type]
 
     # Compose one evaluation row
     eval_row = pd.concat(

@@ -18,11 +18,9 @@ OPFINGEN_SCENARIO = {
     / "Opfingen_scenario_pv_20_ev_efh_0_ev_mfh_0_evghd_0_ev_fleet_0_hp_15_2023_with_h0_batterypf_all",
     # "Opfingen_scenario_pv_20_ev_efh_0_ev_mfh_0_evghd_0_ev_fleet_0_hp_15_2023pf_all",
     # "data_path": "/home/agross/data/grecco/0_Opfingen_scenario_pv_50_ev_20_hp_10_2023"
-    "weather_data_path": config.data_root()
-    / "Opfingen_Profiles_2023"
-    / "weather_data.csv",
+    "weather_data_path": config.data_root() / "Opfingen_Profiles_2023" / "weather_data.csv",
     "hp": False,
-    "pv_scale": 0.35
+    "pv_scale": 0.35,
 }
 
 # This pypsa folder contains all time steps in which congestion and voltage issues are expected.
@@ -55,13 +53,13 @@ def run_congestion_cases(run_name: str):
 
     base_dir = config.result_dir() / "parallelized" / run_name
     run_par_sets = []
-    
+
     run_pars = []
     opt_pars = []
     grid_pars = []
 
     for date, p_lim in SELECTED_CASES_AND_P_LIM:
-        
+
         for max_iter in [3, 4, 5, 6, 7, 8, 9, 10]:
 
             _alpha = 0.25
@@ -95,7 +93,7 @@ def run_congestion_cases(run_name: str):
                         horizon=50,
                         alpha=_alpha,
                         solver_name="gurobi",
-                        fc_type="perfect"
+                        fc_type="perfect",
                     )
                 ]
 
@@ -106,12 +104,10 @@ def run_congestion_cases(run_name: str):
                 ]
             run_par_sets += [dates_run_pars]
 
-
     # parallel_sim.parallel_sim(base_dir, run_pars, opt_pars, grid_pars, n_workers=12)
 
-
     # for run_pars in run_par_sets:
-        # sim_batch_comparison.compare(run_pars)
+    # sim_batch_comparison.compare(run_pars)
 
     sim_batch_comparison.compare(run_pars)
 

@@ -27,9 +27,9 @@ def get_flex_and_inflex(futures: dict[str, type_defs.LocalFuture]):
 
     # Check if either flex or inflex futures is empty and prevent failing downstream
     if not stat_futures:
-        inflex_sum = flex_sum * 0.
+        inflex_sum = flex_sum * 0.0
 
     if not flex_futures:
-        flex_sum = inflex_sum * 0.
+        flex_sum = inflex_sum * 0.0
 
     return flex_futures, stat_futures, flex_sum, inflex_sum

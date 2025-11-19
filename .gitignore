@@ -20,9 +20,8 @@ data/2037
 data/2028
 data/2045
 data/Full_el
-higher_penetration_scenarios
-analysis/created_scenarios
-analysis/unit_count
+higher_penetration_scenario_5
+data/original
 data/synpro_ev_data_pool.csv
 grecco_sim.egg-info
 data/Opfingen_Profiles_2023
@@ -30,4 +29,6 @@ data/tmp/
 data/conf.json
 data/pickled/
 grecco_sim/scripts/debug/start_simulation.py
+grecco_sim/analysis/create_scenarios.py
+grecco_sim/analysis/unit_count.py
 data/opfingen_2045

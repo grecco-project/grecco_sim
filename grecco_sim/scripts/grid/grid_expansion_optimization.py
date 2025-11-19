@@ -11,9 +11,17 @@ logger = logging.getLogger(__name__)
 
 #  FUNCTIONS FOR INDIGO OPTIMIZATION
 
-def indigo_optimize_grid(username=None, token=None, grid_name=None, grid_to_send=None, config=None,
-                         host="https://indigo.ise.fhg.de/", namespace="optimize_inatech",
-                         populations=5):
+
+def indigo_optimize_grid(
+    username=None,
+    token=None,
+    grid_name=None,
+    grid_to_send=None,
+    config=None,
+    host="https://indigo.ise.fhg.de/",
+    namespace="optimize_inatech",
+    populations=5,
+):
     """
     optimize given grid as parametrized with config
 
@@ -43,8 +51,12 @@ def indigo_optimize_grid(username=None, token=None, grid_name=None, grid_to_send
     logger.info(f"Sending grid to indigo api at {url}")
 
     data = {
-        "username": username, "token": token, "grid_to_send": grid_to_send,
-        "grid_name": grid_name, "config": config, "populations": populations
+        "username": username,
+        "token": token,
+        "grid_to_send": grid_to_send,
+        "grid_name": grid_name,
+        "config": config,
+        "populations": populations,
     }
 
     r = requests.post(url, json=data)
@@ -77,15 +89,20 @@ def collect_input_data(grid_folder, config_path):
         grid_to_send[filename] = df.to_json()
 
     # read config file
-    with open(config_path, 'r') as file:
+    with open(config_path, "r") as file:
         config = json.load(file)
 
     return grid_to_send, config
 
+
 # FUNCTIONS FOR RESULTS REQUEST
-def get_state_by_sid(username: str=None, sid: int=None, token: str=None,
-                     host: str="https://indigo.ise.fhg.de/",
-                     namespace: str="get-optimized-by-sid"):
+def get_state_by_sid(
+    username: str = None,
+    sid: int = None,
+    token: str = None,
+    host: str = "https://indigo.ise.fhg.de/",
+    namespace: str = "get-optimized-by-sid",
+):
     """Send a request to API to get progress and result of gen-alg optimization. namespace need to be specified,
     e.g. namespace="get-optimized-by-sid".
 
@@ -129,7 +146,7 @@ def _write_csv_to_disc(fname, fdata, result_grid_name, result_grid_export_path):
             # initialize list elements
             data = [0]  # contains snapshot
             # Create the pandas DataFrame with column name is provided explicitly
-            df = pd.DataFrame(data, columns=['name'])
+            df = pd.DataFrame(data, columns=["name"])
     df.to_csv(os.path.join(result_grid_export_path, fname))
 
 
@@ -163,10 +180,10 @@ def save_grid_result(res, result_grid_name, result_grid_export_path):
         elif ".csv" in fname:
             _write_csv_to_disc(fname, fdata, result_grid_name, result_grid_export_path)
         elif "meta" in fname:
-            with open(os.path.join(result_grid_export_path, fname), 'w') as f:
+            with open(os.path.join(result_grid_export_path, fname), "w") as f:
                 json.dump(json.loads(base64.b64decode(fdata)), f)
         else:
-            with open(os.path.join(result_grid_export_path, fname), 'wb') as f:
+            with open(os.path.join(result_grid_export_path, fname), "wb") as f:
                 f.write(base64.b64decode(fdata))
 
 
@@ -184,13 +201,19 @@ if __name__ == "__main__":
 
     # Credentials for authentication  -  NEVER PUSH THIS
     username = "inatech_client"
-    token = ("token")  # Request token from  Alvaro - alvaro.diaz@inatech.uni-freiburg.de
+    token = "token"  # Request token from  Alvaro - alvaro.diaz@inatech.uni-freiburg.de
     #  or Robert John - robert.john@ise.fraunhofer.de
 
     # send request to api. Username and token need to be set.
     print("Sending request to indigo api...")
-    r = indigo_optimize_grid(username=username, token=token, grid_name=grid_name,
-                             grid_to_send=grid_to_send, config=config, populations=5)
+    r = indigo_optimize_grid(
+        username=username,
+        token=token,
+        grid_name=grid_name,
+        grid_to_send=grid_to_send,
+        config=config,
+        populations=5,
+    )
     result = json.loads(r.text)
     # log response
     logger.info("Response of optimization request:\n{}".format(result))
@@ -214,13 +237,22 @@ if __name__ == "__main__":
     try:
         print(r["progress"])
         if r["progress"] == 100:
-            print("status_code", r["status_code"],
-                  "\nstatus_message", r["status_message"],
-                  "\nprogress", r["progress"],
-                  "\nmessage", r["message"],
-                  "\ngrid_name", r["grid_name"],
-                  "\nstart_at", r["start_at"],
-                  "\nend_at", r["end_at"])
+            print(
+                "status_code",
+                r["status_code"],
+                "\nstatus_message",
+                r["status_message"],
+                "\nprogress",
+                r["progress"],
+                "\nmessage",
+                r["message"],
+                "\ngrid_name",
+                r["grid_name"],
+                "\nstart_at",
+                r["start_at"],
+                "\nend_at",
+                r["end_at"],
+            )
             export_path = os.path.join(export_path, str(sid))
             save_grid_result(r["result_data"], r["grid_name"], export_path)
     except Exception as E:

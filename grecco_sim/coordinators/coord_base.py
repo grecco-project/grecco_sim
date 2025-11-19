@@ -1,6 +1,5 @@
-
 """
-    Ttwo heuristics / baseline algorithms for central coordination
+Ttwo heuristics / baseline algorithms for central coordination
 """
 
 from grecco_sim.coordinators.coord_interface import CoordinatorInterface
@@ -22,4 +21,3 @@ class NoCentralControl(CoordinatorInterface):
 
     def get_signals(self, futures):
         return {sys_id: None for sys_id in futures}
-

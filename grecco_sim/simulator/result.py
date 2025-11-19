@@ -14,7 +14,7 @@ from grecco_sim.util import data_io
 
 
 def filter_agent_ts(result_dict, time_index) -> pd.DataFrame:
-    """ Compile dataframe for an individual agent based on result dict.
+    """Compile dataframe for an individual agent based on result dict.
 
     result_dict: Dictionary of individual agent results from simulation.
     time_index: Simulation time index is set as agent dataframe index.
@@ -71,7 +71,8 @@ class SimulationResult:
         assigned_grid_fees: pd.DataFrame,
         sys_pars: dict[str, dict[str, type_defs.SysPars]],
         time_index: pd.DatetimeIndex,
-        execution_time: float = -1):
+        execution_time: float = -1,
+    ):
 
         self.run_pars = run_pars
         self.opt_pars = opt_pars
@@ -124,7 +125,7 @@ class SimulationResult:
         return self.ts_grid.sum(axis=1)
 
     def export_to_files(self, result_dir: Optional[Path] = None) -> None:
-        """ Write SimResult in given directory.
+        """Write SimResult in given directory.
 
         result_dir/
         ├─ agents/                    # Per-agent time-series CSVs.

@@ -130,7 +130,7 @@ def custom_json_dump(out_file_name: Path, parameters):
 
 
 def load_system_parameters(p: Path) -> dict[str, dict[str, type_defs.SysPars]]:
-    """ Read unit parameters from json as dicts and create SysPars objects."""
+    """Read unit parameters from json as dicts and create SysPars objects."""
 
     with open(p) as f:
         parameters = json.load(f)
@@ -232,4 +232,4 @@ def assert_year(ts: pd.Series, year: int):
     if type(ts) is not pd.DatetimeIndex:
         ts = pd.to_datetime(ts, utc=True)
     if ts[0].year != year and ts[-1].year != year:
-        raise ValueError(f"Time series does not cover year {year}.")
+        raise Warning(f"Time series does not cover year {year}.")

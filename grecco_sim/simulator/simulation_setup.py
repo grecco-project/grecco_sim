@@ -68,6 +68,30 @@ class SimulationSetup(object):
             for sys_id in self.sys_ids
         }
 
+        all_params = {"hp_p": 0, "pv_p": 0, "ev_p": 0, "ev_c": 0, "bat_p": 0, "bat_c": 0}
+        all_units = {"hp": 0, "pv": 0, "ev": 0, "bat": 0}
+
+        for sys_id in model_input.keys():
+            params = model_input[sys_id]["params"]
+            for unit, unit_params in params.items():
+                if unit_params._system == "hp":
+                    all_params["hp_p"] += unit_params.p_max
+                    all_units["hp"] += 1
+                elif unit_params._system == "pv":
+                    all_units["pv"] += 1
+                elif unit_params._system == "ev":
+                    all_params["ev_p"] += unit_params.p_lim_ac
+                    all_params["ev_c"] += unit_params.capacity
+                    all_units["ev"] += 1
+                elif unit_params._system == "bat":
+                    all_params["bat_p"] += unit_params.p_inv
+                    all_params["bat_c"] += unit_params.capacity
+                    all_units["bat"] += 1
+
+        print("Total system capacities in this simulation:")
+        print(all_params)
+        print(all_units)
+
         return [
             grid_node.GridNode(sys_id, self.run_pars, model_input[sys_id], opt_pars)
             for sys_id in self.sys_ids
@@ -160,14 +184,8 @@ class SimulationSetup(object):
 
         # Translate results to grid.
 
-
-
-
         # Plot some results. Plotting function decides if plots must be shown based on run_pars
         plotter.make_plots(sim_result)
-        plotter.make_agent_plots(
-            eval_results["agent_res"],
-            sim_result.run_pars,
-            "all")
+        plotter.make_agent_plots(eval_results["agent_res"], sim_result.run_pars, "all")
 
         return eval_results

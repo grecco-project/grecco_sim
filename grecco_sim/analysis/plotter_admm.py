@@ -18,40 +18,78 @@ class Plotter(object):
 
         for sys_id in signal:
 
-            ax.plot(np.arange(self.horizon) + k, prev_signal[sys_id]["lambda"],
-                    label=f"Previous Iteration {sys_id}", drawstyle="steps-post")
-            ax.plot(np.arange(self.horizon) + k, signal[sys_id]["lambda"],
-                    label=f"New Iteration {sys_id}", drawstyle="steps-post")
+            ax.plot(
+                np.arange(self.horizon) + k,
+                prev_signal[sys_id]["lambda"],
+                label=f"Previous Iteration {sys_id}",
+                drawstyle="steps-post",
+            )
+            ax.plot(
+                np.arange(self.horizon) + k,
+                signal[sys_id]["lambda"],
+                label=f"New Iteration {sys_id}",
+                drawstyle="steps-post",
+            )
 
         ax.legend()
 
-        fig2, ax2 = style.styled_plot(y_label="Central Solution", x_label="Horizon index", figsize="landscape")
+        fig2, ax2 = style.styled_plot(
+            y_label="Central Solution", x_label="Horizon index", figsize="landscape"
+        )
 
         _prev_sys = np.zeros(self.horizon)
         index = np.arange(self.horizon) + k
-        color_list = [xkcd_color[1] for xkcd_color in list(mcolors.XKCD_COLORS.items())[:len(signal)]]
+        color_list = [
+            xkcd_color[1] for xkcd_color in list(mcolors.XKCD_COLORS.items())[: len(signal)]
+        ]
 
         for i, sys_id in enumerate(signal):
 
             grid_power_sys = signal[sys_id]["res_power_set"]
 
-            ax2.fill_between(index, _prev_sys, grid_power_sys + _prev_sys, color=color_list[i], alpha=0.2, step="post")
-            ax2.plot(index, grid_power_sys + _prev_sys, label=sys_id, drawstyle="steps-post", color=color_list[i])
+            ax2.fill_between(
+                index,
+                _prev_sys,
+                grid_power_sys + _prev_sys,
+                color=color_list[i],
+                alpha=0.2,
+                step="post",
+            )
+            ax2.plot(
+                index,
+                grid_power_sys + _prev_sys,
+                label=sys_id,
+                drawstyle="steps-post",
+                color=color_list[i],
+            )
             _prev_sys += grid_power_sys
 
-        ax2.plot(index, _prev_sys, label="Sum", linestyle="dashed", color="black", drawstyle="steps-post")
-        ax2.plot(index, [self.p_lim] * len(_prev_sys), label="Limit Power", linestyle="dotted", color="black",
-                 drawstyle="steps-post")
+        ax2.plot(
+            index, _prev_sys, label="Sum", linestyle="dashed", color="black", drawstyle="steps-post"
+        )
+        ax2.plot(
+            index,
+            [self.p_lim] * len(_prev_sys),
+            label="Limit Power",
+            linestyle="dotted",
+            color="black",
+            drawstyle="steps-post",
+        )
 
         ax2.legend(title=f"New signal slack+res_power {k}")
         fig.tight_layout
 
     def plot_futures(self, futures, k):
 
-        color_list = [xkcd_color[1] for xkcd_color in list(mcolors.XKCD_COLORS.items())[:len(futures)]]
+        color_list = [
+            xkcd_color[1] for xkcd_color in list(mcolors.XKCD_COLORS.items())[: len(futures)]
+        ]
 
-        fig, ax = style.styled_plot(xlabel="Horizon index", ylabel="Power", figsize="landscape",
-                                    )
+        fig, ax = style.styled_plot(
+            xlabel="Horizon index",
+            ylabel="Power",
+            figsize="landscape",
+        )
         _prev_sys = np.zeros(self.horizon)
         index = np.arange(self.horizon) + k
 
@@ -60,11 +98,26 @@ class Plotter(object):
             grid_power_sys = futures[sys_id]["flex_schedule"]
             # grid_power_sys = futures[sys_id]["fc"] + futures[sys_id]["flex_schedule"]
 
-            ax.fill_between(index, _prev_sys, grid_power_sys + _prev_sys, color=color_list[i], alpha=0.2, step="post")
-            ax.plot(index, grid_power_sys + _prev_sys, label=sys_id, drawstyle="steps-post", color=color_list[i])
+            ax.fill_between(
+                index,
+                _prev_sys,
+                grid_power_sys + _prev_sys,
+                color=color_list[i],
+                alpha=0.2,
+                step="post",
+            )
+            ax.plot(
+                index,
+                grid_power_sys + _prev_sys,
+                label=sys_id,
+                drawstyle="steps-post",
+                color=color_list[i],
+            )
             _prev_sys += grid_power_sys
 
-        ax.plot(index, _prev_sys, label="Sum", linestyle="dashed", color="black", drawstyle="steps-post")
+        ax.plot(
+            index, _prev_sys, label="Sum", linestyle="dashed", color="black", drawstyle="steps-post"
+        )
 
         ax.legend(title=f"Futures before update at {k}")
         fig.tight_layout()
@@ -91,5 +144,3 @@ class Plotter(object):
 
         if clear:
             self.clear_log()
-
-

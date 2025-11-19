@@ -2,11 +2,29 @@ import pandas as pd
 
 
 def custom_transformer_types() -> pd.DataFrame:
-    """ Define custom transformer types. """
+    """Define custom transformer types."""
     transformers = pd.DataFrame(
-        index=["name", "s_nom", "v_nom_0", "v_nom_1", "vsc", "vscr", "pfe",
-               "i0", "phase_shift", "tap_side", "tap_min", "tap_max", "tap_step",
-               "references", "oltc", "capex", "opex", "code"])
+        index=[
+            "name",
+            "s_nom",
+            "v_nom_0",
+            "v_nom_1",
+            "vsc",
+            "vscr",
+            "pfe",
+            "i0",
+            "phase_shift",
+            "tap_side",
+            "tap_min",
+            "tap_max",
+            "tap_step",
+            "references",
+            "oltc",
+            "capex",
+            "opex",
+            "code",
+        ]
+    )
 
     transformer_0 = {
         "name": 0,
@@ -26,7 +44,8 @@ def custom_transformer_types() -> pd.DataFrame:
         "oltc": False,
         "capex": None,
         "opex": None,
-        "code": 6}
+        "code": 6,
+    }
 
     transformer_1 = {
         "name": 0,
@@ -46,6 +65,7 @@ def custom_transformer_types() -> pd.DataFrame:
         "oltc": False,
         "capex": None,
         "opex": None,
-        "code": 6}
+        "code": 6,
+    }
 
-    return pd.DataFrame([transformer_0 ,transformer_1])
+    return pd.DataFrame([transformer_0, transformer_1])

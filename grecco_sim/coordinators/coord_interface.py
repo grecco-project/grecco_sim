@@ -12,7 +12,6 @@ class CoordinatorInterface(abc.ABC):
     It defines the functions that must be implemented in the GreCCo framework.
     """
 
-
     coord_name = "Unnamed Coordinator"
 
     def __init__(self, horizon: int):
@@ -22,7 +21,7 @@ class CoordinatorInterface(abc.ABC):
     def get_initial_signal(self) -> sig_types.SignalType | None:
         """
         Return Initial signal in market clearing.
-        
+
         This signal is used to initiate the coordination loop.
         """
         return None
@@ -45,4 +44,4 @@ class CoordinatorInterface(abc.ABC):
     ) -> Dict[str, float]:
         """Assign a reward per agent for collaboration."""
         assert set(initial_futures.keys()) == set(realization_grid.keys()) == set(signals.keys())
-        return {f"fee_{key}": 0. for key in realization_grid.keys()}
+        return {f"fee_{key}": 0.0 for key in realization_grid.keys()}

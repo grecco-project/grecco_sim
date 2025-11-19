@@ -8,7 +8,7 @@ def result_dir() -> Path:
 
 
 def data_root() -> Path:
-    """ Assume data is stored in repository root. """
+    """Assume data is stored in repository root."""
     return Path(__file__).parents[2] / "data"
 
 

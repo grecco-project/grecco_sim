@@ -9,7 +9,6 @@ from tespy.connections import Connection
 from tespy.networks import Network
 
 
-
 class HeatPumpParameters:
     def __init__(self, p_max, cop, refrigerant, p_cut_off, slope, intercept):
         self.p_max = p_max
@@ -20,7 +19,7 @@ class HeatPumpParameters:
         self.intercept = intercept
 
 
-class HeatPumpCreator():
+class HeatPumpCreator:
     """
     This model class calculates the heat pump curve(pel vs cop)  during isobaric operation.  The selection of operational point,
     and structure of the thermodynamic calculation is defined in the methods
@@ -50,12 +49,12 @@ class HeatPumpCreator():
         Return: dataframe with pressures, efficiency, mass of refrigerant, and temperature levels
         """
         my_plant = Network()
-        my_plant.set_attr(t_unit='C', p_unit='bar', h_unit='kJ / kg')
-        cc = CycleCloser('cycle closer')
-        cond = SimpleHeatExchanger('condenser')
-        evap = SimpleHeatExchanger('evaporator')
-        va = Valve('expansion valve')
-        comp = Compressor('compressor')
+        my_plant.set_attr(t_unit="C", p_unit="bar", h_unit="kJ / kg")
+        cc = CycleCloser("cycle closer")
+        cond = SimpleHeatExchanger("condenser")
+        evap = SimpleHeatExchanger("evaporator")
+        va = Valve("expansion valve")
+        comp = Compressor("compressor")
 
         # Create empty lists to store the results
         pressure_list_cold_values = []
@@ -66,19 +65,36 @@ class HeatPumpCreator():
         temp4_values = []
 
         # connections of heat pump
-        c1 = Connection(cc, 'out1', evap, 'in1', label='1')
-        c2 = Connection(evap, 'out1', comp, 'in1', label='2')
-        c3 = Connection(comp, 'out1', cond, 'in1', label='3')
-        c4 = Connection(cond, 'out1', va, 'in1', label='4')
-        c0 = Connection(va, 'out1', cc, 'in1', label='0')
+        c1 = Connection(cc, "out1", evap, "in1", label="1")
+        c2 = Connection(evap, "out1", comp, "in1", label="2")
+        c3 = Connection(comp, "out1", cond, "in1", label="3")
+        c4 = Connection(cond, "out1", va, "in1", label="4")
+        c0 = Connection(va, "out1", cc, "in1", label="0")
 
-        my_plant.add_conns(c1, c2, c3, c4, c0,)
+        my_plant.add_conns(
+            c1,
+            c2,
+            c3,
+            c4,
+            c0,
+        )
 
-        # Internal dictionary for operating pressures (hot and cold sides of the heat pump) 
-        # Rounded values used for the lists 
-        refrigerant_pressure_dict = {"R32":{"cold_side_pressure": list(range(2, 7)), "hot_side_pressure": list(range(19, 56))},
-                                     "R290": {"cold_side_pressure": list(range(1, 4)), "hot_side_pressure": list(range(11, 31))},
-                                     "R407c": {"cold_side_pressure": list(range(1, 4)), "hot_side_pressure": list(range(14, 42))}}
+        # Internal dictionary for operating pressures (hot and cold sides of the heat pump)
+        # Rounded values used for the lists
+        refrigerant_pressure_dict = {
+            "R32": {
+                "cold_side_pressure": list(range(2, 7)),
+                "hot_side_pressure": list(range(19, 56)),
+            },
+            "R290": {
+                "cold_side_pressure": list(range(1, 4)),
+                "hot_side_pressure": list(range(11, 31)),
+            },
+            "R407c": {
+                "cold_side_pressure": list(range(1, 4)),
+                "hot_side_pressure": list(range(14, 42)),
+            },
+        }
 
         pressure_list_cold = refrigerant_pressure_dict[self.refrigerant]["cold_side_pressure"]
         pressure_list_hot = refrigerant_pressure_dict[self.refrigerant]["hot_side_pressure"]
@@ -90,11 +106,15 @@ class HeatPumpCreator():
                 # Power consumption=1850 kW
                 # Nomincal capacity for heating and cooling= 5kw
                 comp.set_attr(P=self.p_max)
-                cond.set_attr(pr=0.99, Q=-self.p_max * self.cop)  # pressure drop at the condenser (consumer side) with -10^6 Kj/kg heating need.
+                cond.set_attr(
+                    pr=0.99, Q=-self.p_max * self.cop
+                )  # pressure drop at the condenser (consumer side) with -10^6 Kj/kg heating need.
                 evap.set_attr(pr=0.99)
-                c2.set_attr(p=coldpress, x=1, fluid={self.refrigerant: 1})  # TODO Refrigerant mixture should be specified for other heat pumps
+                c2.set_attr(
+                    p=coldpress, x=1, fluid={self.refrigerant: 1}
+                )  # TODO Refrigerant mixture should be specified for other heat pumps
                 c4.set_attr(p=hotpress, x=0)
-                my_plant.solve(mode='design')
+                my_plant.solve(mode="design")
                 pressure_list_cold_values.append(coldpress)
                 pressure_list_hot_values.append(hotpress)
                 eta_values.append(comp.eta_s.val)
@@ -103,17 +123,21 @@ class HeatPumpCreator():
                 temp4_values.append(c4.T.val)
 
         data = {
-            'pressurelistcold': pressure_list_cold_values,
-            'pressurelisthot': pressure_list_hot_values,
-            'eta': eta_values,
-            'mass': mass_values,
-            'Temp1': temp1_values,
-            'Temp4': temp4_values
+            "pressurelistcold": pressure_list_cold_values,
+            "pressurelisthot": pressure_list_hot_values,
+            "eta": eta_values,
+            "mass": mass_values,
+            "Temp1": temp1_values,
+            "Temp4": temp4_values,
         }
 
         df = pd.DataFrame(data)
-        self.operational_data = df[(df['eta'] <= 0.95) & (df['Temp4'] - df['Temp1'] <= 70)]  # TODO: Formalize exlusion criteria
-        self.operational_data["DeltaT"] = self.operational_data["Temp4"] - self.operational_data["Temp1"]
+        self.operational_data = df[
+            (df["eta"] <= 0.95) & (df["Temp4"] - df["Temp1"] <= 70)
+        ]  # TODO: Formalize exlusion criteria
+        self.operational_data["DeltaT"] = (
+            self.operational_data["Temp4"] - self.operational_data["Temp1"]
+        )
 
         return self.operational_data
 
@@ -125,11 +149,13 @@ class HeatPumpCreator():
         Return: dataframe with single operational point of pressures, efficiency, mass of refrigerant, and temperature levels
         """
         self.get_operational_data()  # Initializing self.operational_data
-        points = self.operational_data[['mass', 'eta']].values.tolist()
+        points = self.operational_data[["mass", "eta"]].values.tolist()
         centroid = MultiPoint(points).centroid
         df_copy = self.operational_data.copy()
-        df_copy.loc[:, 'distance_to_centroid'] = df_copy.apply(lambda row: euclidean((centroid.x, centroid.y), (row['mass'], row['eta'])), axis=1)
-        self.selected_point = df_copy.loc[df_copy['distance_to_centroid'].idxmin()]
+        df_copy.loc[:, "distance_to_centroid"] = df_copy.apply(
+            lambda row: euclidean((centroid.x, centroid.y), (row["mass"], row["eta"])), axis=1
+        )
+        self.selected_point = df_copy.loc[df_copy["distance_to_centroid"].idxmin()]
 
         return self.selected_point
 
@@ -141,25 +167,35 @@ class HeatPumpCreator():
         Return: q_out - Heat to/into household
         """
         my_plant = Network()
-        my_plant.set_attr(T_unit='C', p_unit='bar', h_unit='kJ / kg')
-        cc = CycleCloser('cycle closer')
-        cond = SimpleHeatExchanger('condenser')
-        evap = SimpleHeatExchanger('evaporator')
-        va = Valve('expansion valve')
-        comp = Compressor('compressor')
-        c1 = Connection(cc, 'out1', evap, 'in1', label='1')
-        c2 = Connection(evap, 'out1', comp, 'in1', label='2')
-        c3 = Connection(comp, 'out1', cond, 'in1', label='3')
-        c4 = Connection(cond, 'out1', va, 'in1', label='4')
-        c0 = Connection(va, 'out1', cc, 'in1', label='0')
-        my_plant.add_conns(c1, c2, c3, c4, c0,)
+        my_plant.set_attr(T_unit="C", p_unit="bar", h_unit="kJ / kg")
+        cc = CycleCloser("cycle closer")
+        cond = SimpleHeatExchanger("condenser")
+        evap = SimpleHeatExchanger("evaporator")
+        va = Valve("expansion valve")
+        comp = Compressor("compressor")
+        c1 = Connection(cc, "out1", evap, "in1", label="1")
+        c2 = Connection(evap, "out1", comp, "in1", label="2")
+        c3 = Connection(comp, "out1", cond, "in1", label="3")
+        c4 = Connection(cond, "out1", va, "in1", label="4")
+        c0 = Connection(va, "out1", cc, "in1", label="0")
+        my_plant.add_conns(
+            c1,
+            c2,
+            c3,
+            c4,
+            c0,
+        )
         comp.set_attr(P=p_in)
         cond.set_attr(pr=0.99)
         evap.set_attr(pr=0.99)
-        c2.set_attr(m=self.selected_point["mass"], x=1, fluid={self.refrigerant: 1})  # TODO Refrigerant mixture should be specified for other heat pumps
-        c4.set_attr(x=0, p=self.selected_point["pressurelisthot"])                   # Perhaps is not relevant to have mixtures
+        c2.set_attr(
+            m=self.selected_point["mass"], x=1, fluid={self.refrigerant: 1}
+        )  # TODO Refrigerant mixture should be specified for other heat pumps
+        c4.set_attr(
+            x=0, p=self.selected_point["pressurelisthot"]
+        )  # Perhaps is not relevant to have mixtures
         c1.set_attr(p=self.selected_point["pressurelistcold"])
-        my_plant.solve(mode='design')
+        my_plant.solve(mode="design")
 
         # apply the cut off operation
         if comp.eta_s.val < 1:
@@ -215,8 +251,9 @@ class HeatPumpCreator():
 
         return self.p_cut_off, self.slope, self.intercept
 
+
 def identify_heatpump_model():
-    # Import the heat pump database 
+    # Import the heat pump database
     path = pathlib.Path(__file__).parent.absolute()  # model_identification directory
     path = path.parent.parent.parent  # repo base directory
     path = path / "data" / "heat_pump_database" / "heat_pump_database_short_version.csv"
@@ -234,19 +271,19 @@ def identify_heatpump_model():
         heat_pump_instance = HeatPumpCreator(parameters)
         if str(parameters.slope) == "nan":
             print(f"Generating parameters for heat pump {i}")
-            heat_pump_instance.generate_operation_curve()  
+            heat_pump_instance.generate_operation_curve()
         else:
-            print(f"Information for heat pump {i} was already available. No calculation was performed.")
-            
+            print(
+                f"Information for heat pump {i} was already available. No calculation was performed."
+            )
+
         heat_pump_info.at[i, "p_cut_off"] = heat_pump_instance.p_cut_off
         heat_pump_info.at[i, "slope"] = heat_pump_instance.slope
         heat_pump_info.at[i, "intercept"] = heat_pump_instance.intercept
 
-    # Export data to the heat pump database  
-    heat_pump_info.to_csv(path, sep=";", index = False)
-
+    # Export data to the heat pump database
+    heat_pump_info.to_csv(path, sep=";", index=False)
 
 
 if __name__ == "__main__":
     identify_heatpump_model()
-    
